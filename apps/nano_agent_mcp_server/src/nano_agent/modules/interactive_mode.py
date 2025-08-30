@@ -142,12 +142,13 @@ class InteractiveSession:
     
     def __init__(self, initial_model: str = DEFAULT_MODEL, initial_provider: str = DEFAULT_PROVIDER, 
                  initial_agent: Optional[str] = None, api_base: Optional[str] = None, 
-                 api_key: Optional[str] = None):
+                 api_key: Optional[str] = None, enable_trace: bool = False):
         """Initialize the interactive session."""
         self.model = initial_model
         self.provider = initial_provider
         self.api_base = api_base
         self.api_key = api_key
+        self.enable_trace = enable_trace
         self.verbose = False
         self.loader = CommandLoader()
         self.agent_loader = AgentLoader()
@@ -811,7 +812,8 @@ class InteractiveSession:
                     provider=self.provider,
                     api_base=self.api_base,
                     api_key=self.api_key,
-                    chat_history=self.chat_history if len(self.chat_history) > 1 else None
+                    chat_history=self.chat_history if len(self.chat_history) > 1 else None,
+                    enable_trace=self.enable_trace
                 )
                 response = _execute_nano_agent(request, enable_rich_logging=True)
                 

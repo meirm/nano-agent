@@ -38,12 +38,25 @@ from .modules.session_manager import SessionManager
 app = typer.Typer()
 console = Console()
 
-def check_api_key():
-    """Check if OpenAI API key is set."""
-    if not os.getenv("OPENAI_API_KEY"):
-        console.print(f"[red]Error: {ERROR_NO_API_KEY}[/red]")
-        console.print("Please set it with: export OPENAI_API_KEY=your-api-key")
-        sys.exit(1)
+def check_api_key(provider: str = None):
+    """Check if required API key is set based on provider."""
+    # If no provider specified, try to determine from context
+    if provider is None:
+        provider = DEFAULT_PROVIDER
+    
+    # Only check API keys for providers that require them
+    if provider == "openai":
+        if not os.getenv("OPENAI_API_KEY"):
+            console.print(f"[red]Error: OPENAI_API_KEY environment variable is not set[/red]")
+            console.print("Please set it with: export OPENAI_API_KEY=your-api-key")
+            sys.exit(1)
+    elif provider == "anthropic":
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            console.print(f"[red]Error: ANTHROPIC_API_KEY environment variable is not set[/red]")
+            console.print("Please set it with: export ANTHROPIC_API_KEY=your-api-key")
+            sys.exit(1)
+    # Ollama, ollama-native, and lmstudio don't require API keys by default
+    # They may use them for authentication but it's optional
 
 @app.command()
 def test_tools():
@@ -108,10 +121,24 @@ def run(
     temperature: float = typer.Option(None, "--temperature", "-t", help="Model temperature (0.0-2.0)"),
     max_tokens: int = typer.Option(None, "--max-tokens", help="Maximum response tokens"),
     no_rich: bool = typer.Option(False, "--no-rich", help="Disable rich formatting"),
-    save: bool = typer.Option(True, "--save/--no-save", help="Save conversation to session history")
+    save: bool = typer.Option(True, "--save/--no-save", help="Save conversation to session history"),
+    enable_trace: bool = typer.Option(False, "--enable-trace", help="Enable OpenAI agent tracing")
 ):
     """Run the nano agent with a prompt. Supports /command syntax for command files."""
-    check_api_key()
+    # Determine provider first before checking API key
+    if provider is None:
+        config_file = Path.home() / ".nano-cli" / "config.json"
+        if config_file.exists():
+            try:
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+                    provider = config.get('default_provider', DEFAULT_PROVIDER)
+            except Exception:
+                provider = DEFAULT_PROVIDER
+        else:
+            provider = DEFAULT_PROVIDER
+    
+    check_api_key(provider)
     
     # Load config defaults if not specified
     config_file = Path.home() / ".nano-cli" / "config.json"
@@ -205,7 +232,8 @@ def run(
         api_key=api_key,
         chat_history=chat_history if chat_history else None,
         temperature=temperature if temperature is not None else DEFAULT_TEMPERATURE,
-        max_tokens=max_tokens if max_tokens is not None else MAX_TOKENS
+        max_tokens=max_tokens if max_tokens is not None else MAX_TOKENS,
+        enable_trace=enable_trace
     )
     
     # Execute agent without progress spinner (rich logging will show progress)
@@ -352,7 +380,7 @@ def sessions(
 @app.command()
 def demo():
     """Run a demo showing various agent capabilities."""
-    check_api_key()
+    check_api_key(DEFAULT_PROVIDER)
     
     console.print(Panel("[cyan]Nano Agent Demo[/cyan]", expand=False))
     
@@ -384,10 +412,24 @@ def interactive(
     agent: str = typer.Option(None, help="Initial agent personality to use"),
     api_base: str = typer.Option(None, help="API base URL (overrides environment variables)"),
     api_key: str = typer.Option(None, help="API key (overrides environment variables)"),
-    simple: bool = typer.Option(False, help="Use simple mode without autocompletion")
+    simple: bool = typer.Option(False, help="Use simple mode without autocompletion"),
+    enable_trace: bool = typer.Option(False, "--enable-trace", help="Enable OpenAI agent tracing")
 ):
     """Run the agent in enhanced interactive mode with autocompletion."""
-    check_api_key()
+    # Determine provider first before checking API key
+    if provider is None:
+        config_file = Path.home() / ".nano-cli" / "config.json"
+        if config_file.exists():
+            try:
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+                    provider = config.get('default_provider', DEFAULT_PROVIDER)
+            except Exception:
+                provider = DEFAULT_PROVIDER
+        else:
+            provider = DEFAULT_PROVIDER
+    
+    check_api_key(provider)
     
     # Load config defaults if not specified
     config_file = Path.home() / ".nano-cli" / "config.json"
@@ -417,7 +459,7 @@ def interactive(
         try:
             from .modules.interactive_mode import InteractiveSession
             session = InteractiveSession(initial_model=model, initial_provider=provider, initial_agent=agent, 
-                                        api_base=api_base, api_key=api_key)
+                                        api_base=api_base, api_key=api_key, enable_trace=enable_trace)
             session.run()
         except ImportError:
             console.print("[yellow]Enhanced interactive mode not available. Install with: uv sync[/yellow]")

@@ -212,6 +212,10 @@ class PromptNanoAgentRequest(BaseModel):
         default=False,
         description="If True, disable all write operations (write_file, edit_file)"
     )
+    enable_trace: bool = Field(
+        default=False,
+        description="If True, enable OpenAI agent tracing (requires OPENAI_API_KEY)"
+    )
 
 
 class PromptNanoAgentResponse(BaseModel):

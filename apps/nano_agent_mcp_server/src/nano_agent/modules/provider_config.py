@@ -240,33 +240,41 @@ class ProviderConfig:
             raise ValueError(f"Unsupported provider: {provider}")
     
     @staticmethod
-    def setup_provider(provider: str) -> None:
+    def setup_provider(provider: str, enable_trace: bool = False) -> None:
         """Setup provider-specific configurations.
         
         Args:
             provider: Provider name
+            enable_trace: If True, explicitly enable tracing (requires OPENAI_API_KEY)
         """
-        if provider == "ollama":
-            # Always disable tracing for Ollama since it runs locally
-            logger.info(f"Disabling tracing for {provider} provider (local model)")
-            set_tracing_disabled(True)
-        elif provider == "lmstudio":
-            # Always disable tracing for LMStudio since it runs locally
-            logger.info(f"Disabling tracing for {provider} provider (local model)")
-            set_tracing_disabled(True)
-        elif provider == "ollama-native":
-            # Always disable tracing for Ollama-native since it runs locally
-            logger.info(f"Disabling tracing for {provider} provider (local model)")
-            set_tracing_disabled(True)
-        elif provider != "openai":
-            # Disable tracing for other non-OpenAI providers by default
-            # unless an OpenAI key is available for tracing
+        # If tracing is explicitly requested
+        if enable_trace:
+            # Check if we have an OpenAI API key for tracing
             openai_key = os.getenv("OPENAI_API_KEY")
             if not openai_key or openai_key == "sk-none":
-                logger.info(f"Disabling tracing for {provider} provider (no valid OpenAI API key)")
+                logger.warning(f"Tracing requested but no valid OpenAI API key found. Disabling tracing.")
                 set_tracing_disabled(True)
             else:
-                logger.debug(f"Tracing enabled for {provider} provider using OpenAI API key")
+                logger.info(f"Tracing explicitly enabled for {provider} provider")
+                set_tracing_disabled(False)
+        else:
+            # Default behavior: disable tracing for all non-OpenAI providers
+            if provider in ["ollama", "lmstudio", "ollama-native"]:
+                # Always disable tracing for local models
+                logger.info(f"Disabling tracing for {provider} provider (local model)")
+                set_tracing_disabled(True)
+            elif provider != "openai":
+                # Disable tracing for other non-OpenAI providers by default
+                logger.info(f"Disabling tracing for {provider} provider (not OpenAI)")
+                set_tracing_disabled(True)
+            else:
+                # For OpenAI provider, enable tracing by default if API key is available
+                openai_key = os.getenv("OPENAI_API_KEY")
+                if not openai_key or openai_key == "sk-none":
+                    logger.info(f"Disabling tracing for OpenAI provider (no valid API key)")
+                    set_tracing_disabled(True)
+                else:
+                    logger.debug(f"Tracing enabled for OpenAI provider")
     
     @staticmethod
     def validate_provider_setup(provider: str, model: str, available_models: dict, provider_requirements: dict) -> tuple[bool, Optional[str]]:

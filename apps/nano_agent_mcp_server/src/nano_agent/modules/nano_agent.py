@@ -364,7 +364,7 @@ async def _execute_nano_agent_async(request: PromptNanoAgentRequest, enable_rich
             )
         
         # Setup provider-specific configurations
-        ProviderConfig.setup_provider(request.provider)
+        ProviderConfig.setup_provider(request.provider, enable_trace=request.enable_trace)
         
         # Create tool permissions from request
         permissions = ToolPermissions(
@@ -588,7 +588,7 @@ def _execute_nano_agent(request: PromptNanoAgentRequest, enable_rich_logging: bo
             )
         
         # Setup provider-specific configurations
-        ProviderConfig.setup_provider(request.provider)
+        ProviderConfig.setup_provider(request.provider, enable_trace=request.enable_trace)
         
         # Configure model settings based on model capabilities
         base_settings = {

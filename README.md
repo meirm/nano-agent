@@ -49,18 +49,14 @@ While disler's nano-agent provided an excellent foundation, this enhanced fork i
 
 ## TLDR - Quick Start
 
-### For End Users (Production Setup)
-**Get nano-agent running with Claude Desktop in 5 minutes:**
+### Option 1: Install from Internet (Production)
+**For end users - Get nano-agent running with Claude Desktop in 5 minutes:**
 
 ```bash
-# Quick install (Unix/Linux/macOS)
+# macOS/Linux - Install directly from GitHub
 curl -fsSL https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_server/install.sh | bash
 
-# Or download and run locally
-wget https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_server/install.sh
-chmod +x install.sh && ./install.sh
-
-# Windows PowerShell
+# Windows PowerShell - Install directly from GitHub
 iwr https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_server/install.ps1 | iex
 ```
 
@@ -70,15 +66,23 @@ iwr https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_
 - ✅ API key configuration (OpenAI, Anthropic, Ollama)
 - ✅ Ready-to-use nano-agent tools in Claude Desktop
 
-### For Developers (Development Setup)
-**Clone and develop:**
+### Option 2: Install from Cloned Repository (Development)
+**For developers who have already cloned the repo:**
 
 ```bash
+# First, clone the repository
 git clone https://github.com/meirm/nano-agent
 cd nano-agent/apps/nano_agent_mcp_server
+
+# Setup environment
 cp .env.sample .env  # Add your API keys
+
+# Install from local repository
+./install.sh --local
+
+# Or for development mode with editable install
 uv sync --extra test
-./scripts/install.sh && uv tool install -e .
+uv tool install -e .
 ```
 
 ### Usage
@@ -121,14 +125,24 @@ uv sync --extra test
   ```
 - **Homebrew** (optional but recommended): Install from [brew.sh](https://brew.sh)
 
-### Automated Installation
+### Option A: Install from Internet (Recommended for End Users)
 ```bash
-# Direct install
+# Direct install from GitHub
 curl -fsSL https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_server/install.sh | bash
 
 # Or download and review first
 curl -fsSL https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_server/install.sh -o install.sh
 chmod +x install.sh && ./install.sh
+```
+
+### Option B: Install from Cloned Repository (For Developers)
+```bash
+# Clone the repository first
+git clone https://github.com/meirm/nano-agent
+cd nano-agent/apps/nano_agent_mcp_server
+
+# Install from local repo
+./install.sh --local
 ```
 
 ### Manual Installation
@@ -198,9 +212,9 @@ OLLAMA_API_URL=http://localhost:11434      # Optional, for local models
   ```
 - **curl/wget**: Usually pre-installed
 
-### Automated Installation
+### Option A: Install from Internet (Recommended for End Users)
 ```bash
-# Direct install
+# Direct install from GitHub
 curl -fsSL https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_server/install.sh | bash
 
 # Or with wget
@@ -209,6 +223,16 @@ wget -qO- https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agen
 # Or download and review first
 wget https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_server/install.sh
 chmod +x install.sh && ./install.sh
+```
+
+### Option B: Install from Cloned Repository (For Developers)
+```bash
+# Clone the repository first
+git clone https://github.com/meirm/nano-agent
+cd nano-agent/apps/nano_agent_mcp_server
+
+# Install from local repo
+./install.sh --local
 ```
 
 ### Manual Installation
@@ -274,15 +298,26 @@ OLLAMA_API_URL=http://localhost:11434      # Optional, for local models
   - ✅ Check "Install pip" during installation
 - **PowerShell 5.1+**: Pre-installed on Windows 10/11
 
-### Automated Installation
+### Option A: Install from Internet (Recommended for End Users)
 **PowerShell (Run as Administrator recommended):**
 ```powershell
-# Direct install
+# Direct install from GitHub
 iwr https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_server/install.ps1 | iex
 
 # Or download and review first
 iwr -Uri https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_server/install.ps1 -OutFile install.ps1
 .\install.ps1
+```
+
+### Option B: Install from Cloned Repository (For Developers)
+**PowerShell:**
+```powershell
+# Clone the repository first
+git clone https://github.com/meirm/nano-agent
+cd nano-agent\apps\nano_agent_mcp_server
+
+# Install from local repo
+.\install.ps1 -Local
 ```
 
 ### Manual Installation

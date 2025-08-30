@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 INSTALL_DIR="$HOME/.nano-agent"
 CONFIG_DIR="$HOME/.nano-cli"
 SERVICE_NAME="nano-agent"
-GITHUB_REPO="https://github.com/your-org/nano-agent"  # Update with actual repo
+GITHUB_REPO="https://github.com/meirm/nano-agent"
 VERSION="latest"
 
 print_header() {
@@ -103,30 +103,51 @@ install_nano_agent() {
     mkdir -p "$INSTALL_DIR"
     mkdir -p "$CONFIG_DIR"
     
-    # Clone or download the repository
-    if [ -d "$INSTALL_DIR/nano-agent" ]; then
-        print_step "Updating existing installation..."
-        cd "$INSTALL_DIR/nano-agent"
-        git pull origin main || {
-            print_warning "Git pull failed, removing and re-cloning..."
-            cd "$HOME"
-            rm -rf "$INSTALL_DIR/nano-agent"
-            git clone "$GITHUB_REPO.git" "$INSTALL_DIR/nano-agent"
-        }
-    else
-        print_step "Downloading Nano Agent..."
-        # For now, copy from current directory since we don't have the GitHub repo
-        if [ -f "$(pwd)/pyproject.toml" ]; then
-            # We're in the nano-agent directory
-            cp -r "$(pwd)" "$INSTALL_DIR/nano-agent"
+    # Determine if we're installing from internet or local repo
+    if [ -n "$INSTALL_FROM_LOCAL" ]; then
+        # Installing from local repository
+        print_step "Installing from local repository..."
+        
+        # Check if we're in the nano_agent_mcp_server directory
+        if [ -f "$(pwd)/pyproject.toml" ] && [ -d "$(pwd)/src/nano_agent" ]; then
+            # We're in the apps/nano_agent_mcp_server directory
+            # Need to copy the entire repo to preserve relative paths in pyproject.toml
+            print_step "Copying from nano-agent repository..."
+            REPO_ROOT="$(pwd)/../.."
+            rsync -av --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='.pytest_cache' \
+                  --exclude='.git' --exclude='logs' "$REPO_ROOT/" "$INSTALL_DIR/nano-agent/"
+            INSTALL_PATH="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server"
+        elif [ -f "$(pwd)/apps/nano_agent_mcp_server/pyproject.toml" ]; then
+            # We're in the root nano-agent directory
+            print_step "Copying from nano-agent root directory..."
+            rsync -av --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='.pytest_cache' \
+                  --exclude='.git' --exclude='logs' "$(pwd)/" "$INSTALL_DIR/nano-agent/"
+            INSTALL_PATH="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server"
         else
             print_error "Unable to find nano-agent source code"
-            echo "Please run this script from the nano-agent directory or provide the GitHub repository"
+            echo "Please run this script from the nano-agent root directory or apps/nano_agent_mcp_server directory"
             exit 1
         fi
+    else
+        # Installing from internet (GitHub)
+        if [ -d "$INSTALL_DIR/nano-agent" ]; then
+            print_step "Updating existing installation..."
+            cd "$INSTALL_DIR/nano-agent"
+            git pull origin main || {
+                print_warning "Git pull failed, removing and re-cloning..."
+                cd "$HOME"
+                rm -rf "$INSTALL_DIR/nano-agent"
+                git clone "$GITHUB_REPO.git" "$INSTALL_DIR/nano-agent"
+            }
+        else
+            print_step "Downloading Nano Agent from GitHub..."
+            git clone "$GITHUB_REPO.git" "$INSTALL_DIR/nano-agent"
+        fi
+        INSTALL_PATH="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server"
     fi
     
-    cd "$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server"
+    # Change to installation directory
+    cd "$INSTALL_PATH"
     
     # Install dependencies
     print_step "Installing dependencies..."
@@ -457,19 +478,51 @@ ${BOLD}📚 Documentation:${NC}
 ${BOLD}🆘 Need Help?${NC}
    • Run: nano-agent --help
    • Check: nano-cli run "test connection"
-   • Issues: https://github.com/your-org/nano-agent/issues
+   • Issues: https://github.com/meirm/nano-agent/issues
 
 ${GREEN}Happy coding with nano-agent! 🤖✨${NC}
 
 EOF
 }
 
+# Parse command line arguments
+parse_args() {
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --local) INSTALL_FROM_LOCAL=1 ;;
+            --help) 
+                echo "Usage: $0 [OPTIONS]"
+                echo ""
+                echo "Options:"
+                echo "  --local    Install from local repository (for development)"
+                echo "  --help     Show this help message"
+                echo ""
+                echo "Examples:"
+                echo "  # Install from internet (production):"
+                echo "  curl -fsSL https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_server/install.sh | bash"
+                echo ""
+                echo "  # Install from local repository (development):"
+                echo "  ./install.sh --local"
+                exit 0
+                ;;
+            *) echo "Unknown parameter: $1"; exit 1 ;;
+        esac
+        shift
+    done
+}
+
 # Main installation flow
 main() {
+    parse_args "$@"
+    
     print_header
     
-    echo "This script will install Nano Agent MCP Server for production use."
-    echo "It includes Claude Desktop integration and CLI tools."
+    if [ -n "$INSTALL_FROM_LOCAL" ]; then
+        echo "Installing from LOCAL REPOSITORY (development mode)."
+    else
+        echo "Installing from INTERNET (production mode)."
+    fi
+    echo "This script will install Nano Agent MCP Server with Claude Desktop integration."
     echo
     read -p "$(echo -e "${YELLOW}Continue with installation? (y/N): ${NC}")" -n 1 -r
     echo
