@@ -1,0 +1,3 @@
+# Spec Summary (Lite)
+
+Transform nano-agent from basic file operations into a comprehensive development assistant by implementing Cursor-style built-in tools and adding configuration-driven MCP server integration. The enhancement adds proper configuration loading (nano-cli from ~/.nano-cli, nano-agent from ~/.nano-agent, both merge with project .nano-agent/config.json), command file cascade system (global ~/.nano-cli/commands/*.md overridden by project .nano-cli/commands/*.md), @filepath syntax support in prompts, and 7 new tools including pattern matching, web search, smart editing, and terminal execution while maintaining full backward compatibility. MCP server integration enables unlimited extensibility through external servers. Semantic search deferred to Phase 3.
