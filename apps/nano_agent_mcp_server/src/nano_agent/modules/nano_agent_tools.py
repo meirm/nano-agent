@@ -189,7 +189,7 @@ def _create_file_impl(request: CreateFileRequest) -> CreateFileResponse:
         )
 
 
-# Raw tool implementations (not decorated)
+# Raw tool implementations (not rich)
 def read_file_raw(file_path: str) -> str:
     """
     Read the contents of a file.
@@ -703,7 +703,7 @@ def get_nano_agent_tools(permissions=None):
         permissions: Optional ToolPermissions object to enforce restrictions
     
     Returns:
-        List of tool functions decorated with @function_tool
+        List of tool functions rich with @function_tool
     """
     if permissions is None:
         # No restrictions - return all tools

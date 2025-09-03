@@ -72,26 +72,47 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 
+class TokenTrackingHooks(RunHooksBase):
+    """Minimal hooks for token tracking without rich output."""
+    
+    def __init__(self, token_tracker: Optional[TokenTracker] = None):
+        """Initialize with token tracker."""
+        self.token_tracker = token_tracker
+    
+    async def on_agent_start(self, context, agent):
+        """Track initial token usage if available."""
+        if self.token_tracker and hasattr(context, 'usage'):
+            self.token_tracker.update(context.usage)
+    
+    async def on_agent_end(self, context, agent, output):
+        """Track final token usage."""
+        if self.token_tracker and hasattr(context, 'usage'):
+            self.token_tracker.update(context.usage)
+
+
 class RichLoggingHooks(RunHooksBase):
     """Custom lifecycle hooks for rich logging of tool calls and token tracking."""
     
-    def __init__(self, token_tracker: Optional[TokenTracker] = None):
+    def __init__(self, token_tracker: Optional[TokenTracker] = None, verbose: bool = False):
         """Initialize the hooks with a console instance and optional token tracker.
         
         Args:
             token_tracker: Optional TokenTracker for monitoring usage
+            verbose: Whether to show rich logging panels
         """
         self.tool_call_count = 0
         self.tool_call_map = {}  # Map tool call number to tool name
         self.token_tracker = token_tracker
+        self.verbose = verbose
     
     async def on_agent_start(self, context, agent):
         """Called when the agent starts."""
-        console.print(Panel(
-            Text(f"Agent: {agent.name}", style="bold cyan"),
-            title="🚀 Agent Started",
-            border_style="blue"
-        ))
+        if self.verbose:
+            console.print(Panel(
+                Text(f"Agent: {agent.name}", style="bold cyan"),
+                title="🚀 Agent Started",
+                border_style="blue"
+            ))
         
         # Track initial token usage if available
         if self.token_tracker and hasattr(context, 'usage'):
@@ -285,20 +306,22 @@ class RichLoggingHooks(RunHooksBase):
                 f"Tokens: {format_token_count(report.total_tokens)} | "
                 f"Cost: {format_cost(report.total_cost)}"
             )
-            console.print(Panel(
-                Text(f"Agent completed successfully\n{usage_text}", style="bold green"),
-                title="🎯 Agent Finished",
-                border_style="green"
-            ))
+            if self.verbose:
+                console.print(Panel(
+                    Text(f"Agent completed successfully\n{usage_text}", style="bold green"),
+                    title="🎯 Agent Finished",
+                    border_style="green"
+                ))
         else:
-            console.print(Panel(
-                Text("Agent completed successfully", style="bold green"),
-                title="🎯 Agent Finished",
-                border_style="green"
-            ))
+            if self.verbose:
+                console.print(Panel(
+                    Text("Agent completed successfully", style="bold green"),
+                    title="🎯 Agent Finished",
+                    border_style="green"
+                ))
 
 
-async def _execute_nano_agent_async(request: PromptNanoAgentRequest, enable_rich_logging: bool = True) -> PromptNanoAgentResponse:
+async def _execute_nano_agent_async(request: PromptNanoAgentRequest, enable_rich_logging: bool = True, verbose: bool = False) -> PromptNanoAgentResponse:
     """
     Execute the nano agent using OpenAI Agent SDK (async version).
     
@@ -413,8 +436,13 @@ async def _execute_nano_agent_async(request: PromptNanoAgentRequest, enable_rich
         )
         
         # Create token tracker and hooks for rich logging if enabled
-        token_tracker = TokenTracker(model=request.model, provider=request.provider) if enable_rich_logging else None
-        hooks = RichLoggingHooks(token_tracker=token_tracker) if enable_rich_logging else None
+        # Always create token tracker for billing info
+        token_tracker = TokenTracker(model=request.model, provider=request.provider)
+        # Use RichLoggingHooks for rich output or TokenTrackingHooks for minimal tracking
+        if enable_rich_logging:
+            hooks = RichLoggingHooks(token_tracker=token_tracker, verbose=verbose)
+        else:
+            hooks = TokenTrackingHooks(token_tracker=token_tracker)
         
         # Prepare the prompt with chat history context
         # Since Runner.run doesn't support messages parameter directly,
@@ -553,7 +581,7 @@ async def _execute_nano_agent_async(request: PromptNanoAgentRequest, enable_rich
         )
 
 
-def _execute_nano_agent(request: PromptNanoAgentRequest, enable_rich_logging: bool = True) -> PromptNanoAgentResponse:
+def _execute_nano_agent(request: PromptNanoAgentRequest, enable_rich_logging: bool = True, verbose: bool = False) -> PromptNanoAgentResponse:
     """
     Execute the nano agent using OpenAI Agent SDK.
     
@@ -634,8 +662,13 @@ def _execute_nano_agent(request: PromptNanoAgentRequest, enable_rich_logging: bo
         )
         
         # Create token tracker and hooks for rich logging if enabled
-        token_tracker = TokenTracker(model=request.model, provider=request.provider) if enable_rich_logging else None
-        hooks = RichLoggingHooks(token_tracker=token_tracker) if enable_rich_logging else None
+        # Always create token tracker for billing info
+        token_tracker = TokenTracker(model=request.model, provider=request.provider)
+        # Use RichLoggingHooks for rich output or TokenTrackingHooks for minimal tracking
+        if enable_rich_logging:
+            hooks = RichLoggingHooks(token_tracker=token_tracker, verbose=verbose)
+        else:
+            hooks = TokenTrackingHooks(token_tracker=token_tracker)
         
         # Run the agent synchronously
         # Handle the case where there might not be an event loop
@@ -1101,7 +1134,7 @@ def validate_model_provider_combination(model: str, provider: str) -> bool:
     return provider in AVAILABLE_MODELS and model in AVAILABLE_MODELS[provider]
 
 
-# Export raw tools for direct use in CLI (these are the decorated versions)
+# Export raw tools for direct use in CLI (these are the rich versions)
 from .nano_agent_tools import (
     read_file_raw as read_file,
     write_file_raw as write_file,

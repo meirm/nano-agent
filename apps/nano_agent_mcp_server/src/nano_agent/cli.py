@@ -22,6 +22,14 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# Enable flexible configuration system
+try:
+    from .modules.config_integration import enable_flexible_configuration
+    enable_flexible_configuration()
+except ImportError:
+    # Fallback if config_integration is not available
+    pass
+
 from .modules.nano_agent import prompt_nano_agent, _execute_nano_agent
 from .modules.data_types import PromptNanoAgentRequest, ChatMessage
 from .modules.constants import (
@@ -34,9 +42,28 @@ from .modules.constants import (
 )
 from .modules.command_loader import CommandLoader, parse_command_syntax
 from .modules.session_manager import SessionManager
+from .modules.output_formats import (
+    OutputFormat,
+    OutputFormatter,
+    AgentResponse,
+    BillingInfo,
+    create_formatter
+)
 
 app = typer.Typer()
 console = Console()
+console_stderr = Console(stderr=True)
+
+def get_log_console(verbose: bool = False) -> Console:
+    """Get the appropriate console for logging messages.
+    
+    Args:
+        verbose: If True, returns stderr console. If False, returns stdout console.
+        
+    Returns:
+        Console instance for logging output
+    """
+    return console_stderr if verbose else console
 
 def check_api_key(provider: str = None):
     """Check if required API key is set based on provider."""
@@ -47,13 +74,13 @@ def check_api_key(provider: str = None):
     # Only check API keys for providers that require them
     if provider == "openai":
         if not os.getenv("OPENAI_API_KEY"):
-            console.print(f"[red]Error: OPENAI_API_KEY environment variable is not set[/red]")
-            console.print("Please set it with: export OPENAI_API_KEY=your-api-key")
+            console_stderr.print(f"[red]Error: OPENAI_API_KEY environment variable is not set[/red]")
+            console_stderr.print("Please set it with: export OPENAI_API_KEY=your-api-key")
             sys.exit(1)
     elif provider == "anthropic":
         if not os.getenv("ANTHROPIC_API_KEY"):
-            console.print(f"[red]Error: ANTHROPIC_API_KEY environment variable is not set[/red]")
-            console.print("Please set it with: export ANTHROPIC_API_KEY=your-api-key")
+            console_stderr.print(f"[red]Error: ANTHROPIC_API_KEY environment variable is not set[/red]")
+            console_stderr.print("Please set it with: export ANTHROPIC_API_KEY=your-api-key")
             sys.exit(1)
     # Ollama, ollama-native, and lmstudio don't require API keys by default
     # They may use them for authentication but it's optional
@@ -120,9 +147,12 @@ def run(
     new_session: bool = typer.Option(False, "--new", "-n", help="Force a new session"),
     temperature: float = typer.Option(None, "--temperature", "-t", help="Model temperature (0.0-2.0)"),
     max_tokens: int = typer.Option(None, "--max-tokens", help="Maximum response tokens"),
-    no_rich: bool = typer.Option(False, "--no-rich", help="Disable rich formatting"),
     save: bool = typer.Option(True, "--save/--no-save", help="Save conversation to session history"),
-    enable_trace: bool = typer.Option(False, "--enable-trace", help="Enable OpenAI agent tracing")
+    enable_trace: bool = typer.Option(False, "--enable-trace", help="Enable OpenAI agent tracing"),
+    # New output control options
+    billing: bool = typer.Option(False, "--billing", help="Show token usage and cost information"),
+    output_format: str = typer.Option("rich", "--output-format", "-f", 
+                                      help="Output format: simple, json, or rich (default)")
 ):
     """Run the nano agent with a prompt. Supports /command syntax for command files."""
     # Determine provider first before checking API key
@@ -169,7 +199,7 @@ def run(
         # Continue the last session
         last_session = session_manager.get_last_session()
         if last_session:
-            console.print(f"[dim]Continuing session: {last_session.session_id}[/dim]")
+            get_log_console(verbose).print(f"[dim]Continuing session: {last_session.session_id}[/dim]")
             chat_history = session_manager.get_conversation_context()
             # Use session's model/provider if not overridden
             if model == DEFAULT_MODEL:
@@ -180,7 +210,7 @@ def run(
         # Load specific session
         loaded_session = session_manager.load_session(session)
         if loaded_session:
-            console.print(f"[dim]Loaded session: {session}[/dim]")
+            get_log_console(verbose).print(f"[dim]Loaded session: {session}[/dim]")
             chat_history = session_manager.get_conversation_context()
             # Use session's model/provider if not overridden
             if model == DEFAULT_MODEL:
@@ -188,13 +218,14 @@ def run(
             if provider == DEFAULT_PROVIDER:
                 provider = loaded_session.provider
         else:
-            console.print(f"[yellow]Warning: Session '{session}' not found, starting new session[/yellow]")
+            get_log_console(verbose).print(f"[yellow]Warning: Session '{session}' not found, starting new session[/yellow]")
     
     if save and session_manager.current_session is None:
         # Create new session if saving and no session loaded
         session_manager.create_session(provider, model)
-        if session_manager.current_session:
-            console.print(f"[dim]Created session: {session_manager.current_session.session_id}[/dim]")
+    
+    # Parse output format early to control all output
+    format_type = OutputFormat.from_string(output_format)
     
     # Check if this is a command syntax
     command_name, arguments = parse_command_syntax(prompt)
@@ -205,22 +236,31 @@ def run(
         final_prompt = loader.execute_command(command_name, arguments)
         
         if final_prompt is None:
-            console.print(f"[red]Command '/{command_name}' not found.[/red]")
-            console.print(f"[dim]Available commands can be listed with: nano-cli commands list[/dim]")
+            if format_type == OutputFormat.JSON:
+                console.print(json.dumps({"success": False, "error": f"Command '/{command_name}' not found"}))
+            else:
+                get_log_console(verbose).print(f"[red]Command '/{command_name}' not found.[/red]")
+                get_log_console(verbose).print(f"[dim]Available commands can be listed with: nano-cli commands list[/dim]")
             sys.exit(1)
         
-        console.print(Panel(
-            f"[cyan]Running Command: /{command_name}[/cyan]\n"
-            f"Arguments: {arguments if arguments else '(none)'}\n"
-            f"Model: {model}\n"
-            f"Provider: {provider}", 
-            expand=False
-        ))
+        # Only show panel in rich mode and verbose
+        if format_type == OutputFormat.RICH and verbose:
+            get_log_console(verbose).print(Panel(
+                f"[cyan]Running Command: /{command_name}[/cyan]\n"
+                f"Arguments: {arguments if arguments else '(none)'}\n"
+                f"Model: {model}\n"
+                f"Provider: {provider}", 
+                expand=False
+            ))
     else:
         final_prompt = prompt
-        console.print(Panel(f"[cyan]Running Nano Agent[/cyan]\nModel: {model}\nProvider: {provider}", expand=False))
+        # Only show panel in rich mode and verbose
+        if format_type == OutputFormat.RICH and verbose:
+            get_log_console(verbose).print(Panel(f"[cyan]Running Nano Agent[/cyan]\nModel: {model}\nProvider: {provider}", expand=False))
     
-    console.print(f"\n[yellow]Prompt:[/yellow] {final_prompt}\n")
+    # Only show prompt in rich mode and verbose
+    if format_type == OutputFormat.RICH and verbose:
+        get_log_console(verbose).print(f"\n[yellow]Prompt:[/yellow] {final_prompt}\n")
     
     # Create request with the final prompt (either direct or from command)
     request = PromptNanoAgentRequest(
@@ -236,66 +276,72 @@ def run(
         enable_trace=enable_trace
     )
     
-    # Execute agent without progress spinner (rich logging will show progress)
-    response = _execute_nano_agent(request, enable_rich_logging=not no_rich)
+    # Disable rich logging for simple/json formats
+    enable_rich = format_type == OutputFormat.RICH
     
-    # Display results in panels
-    if response.success:
-        console.print(Panel(
-            f"[green]{response.result}[/green]",
-            title="📋 Agent Result",
-            border_style="green",
-            expand=False
-        ))
+    # Execute agent without progress spinner (rich logging will show progress)
+    response = _execute_nano_agent(request, enable_rich_logging=enable_rich, verbose=verbose)
+    
+    # Create formatter based on output format
+    formatter = create_formatter(format_type, show_billing=billing, verbose=verbose, console=console)
+    
+    # Convert response to AgentResponse format
+    agent_response = AgentResponse(
+        success=response.success,
+        message="Agent completed successfully" if response.success else "Agent failed",
+        data=response.result if response.success else None,
+        error=response.error if not response.success else None,
+        metadata=response.metadata,
+        execution_time=response.execution_time_seconds,
+        session_id=session_manager.current_session.session_id if session_manager.current_session else None
+    )
+    
+    # Extract billing information if available
+    if response.metadata and "token_usage" in response.metadata:
+        usage = response.metadata["token_usage"]
+        agent_response.billing = BillingInfo(
+            total_tokens=usage.get("total_tokens", 0),
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            cached_tokens=usage.get("cached_tokens", 0),
+            total_cost=usage.get("total_cost", 0.0),
+            input_cost=usage.get("input_cost", 0.0),
+            output_cost=usage.get("output_cost", 0.0),
+            cached_savings=usage.get("cached_savings", 0.0)
+        )
+    
+    # Format and display the response
+    output = formatter.format_response(agent_response)
+    if output:  # SimpleFormatter and JSONFormatter return strings
+        console.print(output)
+    
+    # Save to session if enabled
+    if response.success and save and session_manager.current_session:
+        session_manager.add_exchange(
+            final_prompt,
+            response.result,
+            response.metadata
+        )
+        if format_type == OutputFormat.RICH and verbose:  # Only show session info in rich mode and verbose
+            get_log_console(verbose).print(f"[dim]Session saved: {session_manager.current_session.session_id}[/dim]")
+    
+    # Only show additional metadata panel if verbose AND using rich format
+    if verbose and format_type == OutputFormat.RICH:
+        # Format metadata as a single JSON object
+        metadata_display = response.metadata.copy() if response.metadata else {}
         
-        # Save to session if enabled
-        if save and session_manager.current_session:
-            session_manager.add_exchange(
-                final_prompt,
-                response.result,
-                response.metadata
-            )
-            console.print(f"[dim]Session saved: {session_manager.current_session.session_id}[/dim]")
-        
-        if verbose:
-            # Format metadata as a single JSON object
-            metadata_display = response.metadata.copy()
+        # Remove token usage from metadata if already shown via billing
+        if "token_usage" in metadata_display and billing:
+            del metadata_display["token_usage"]
             
-            # Add execution time to metadata
-            metadata_display["execution_time_seconds"] = round(response.execution_time_seconds, 2)
-            
-            # Format token usage fields if present
-            if "token_usage" in metadata_display:
-                usage = metadata_display["token_usage"]
-                # Flatten key metrics for better display
-                metadata_display["token_usage"] = {
-                    "total_tokens": f"{usage['total_tokens']:,}",
-                    "input_tokens": f"{usage['input_tokens']:,}",
-                    "output_tokens": f"{usage['output_tokens']:,}",
-                    "cached_tokens": f"{usage['cached_tokens']:,}",
-                    "total_cost": f"${usage['total_cost']:.4f}"
-                }
-            
+        # Only show metadata panel if there's something to show
+        if metadata_display:
             # Pretty print the combined metadata
             metadata_json = json.dumps(metadata_display, indent=2)
             
-            console.print(Panel(
+            get_log_console(verbose).print(Panel(
                 Syntax(metadata_json, "json", theme="monokai", line_numbers=False),
-                title="🔍 Metadata & Usage",
-                border_style="dim",
-                expand=False
-            ))
-    else:
-        console.print(Panel(
-            f"[red]{response.error}[/red]",
-            title="❌ Agent Failed",
-            border_style="red",
-            expand=False
-        ))
-        if verbose and response.metadata:
-            console.print(Panel(
-                json.dumps(response.metadata, indent=2),
-                title="🔍 Error Details",
+                title="🔍 Additional Metadata",
                 border_style="dim",
                 expand=False
             ))
@@ -374,8 +420,8 @@ def sessions(
         console.print(f"[green]Cleared {deleted} sessions older than {days} days[/green]")
         
     else:
-        console.print(f"[red]Unknown action: {action}[/red]")
-        console.print("Available actions: list, show, clear")
+        console_stderr.print(f"[red]Unknown action: {action}[/red]")
+        console_stderr.print("Available actions: list, show, clear")
 
 @app.command()
 def demo():
@@ -413,7 +459,8 @@ def interactive(
     api_base: str = typer.Option(None, help="API base URL (overrides environment variables)"),
     api_key: str = typer.Option(None, help="API key (overrides environment variables)"),
     simple: bool = typer.Option(False, help="Use simple mode without autocompletion"),
-    enable_trace: bool = typer.Option(False, "--enable-trace", help="Enable OpenAI agent tracing")
+    enable_trace: bool = typer.Option(False, "--enable-trace", help="Enable OpenAI agent tracing"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output")
 ):
     """Run the agent in enhanced interactive mode with autocompletion."""
     # Determine provider first before checking API key
@@ -462,13 +509,13 @@ def interactive(
                                         api_base=api_base, api_key=api_key, enable_trace=enable_trace)
             session.run()
         except ImportError:
-            console.print("[yellow]Enhanced interactive mode not available. Install with: uv sync[/yellow]")
-            console.print("[dim]Falling back to simple mode...[/dim]\n")
-            _run_simple_interactive(model, provider, api_base, api_key)
+            (console_stderr if verbose else console).print("[yellow]Enhanced interactive mode not available. Install with: uv sync[/yellow]")
+            (console_stderr if verbose else console).print("[dim]Falling back to simple mode...[/dim]\n")
+            _run_simple_interactive(model, provider, verbose, api_base, api_key)
 
-def _run_simple_interactive(model: str, provider: str, api_base: str = None, api_key: str = None):
+def _run_simple_interactive(model: str, provider: str, verbose: bool = False, api_base: str = None, api_key: str = None):
     """Run simple interactive mode without autocompletion."""
-    console.print(Panel("[cyan]Nano Agent Interactive Mode (Simple)[/cyan]\nType 'exit' to quit", expand=False))
+    (console_stderr if verbose else console).print(Panel("[cyan]Nano Agent Interactive Mode (Simple)[/cyan]\nType 'exit' to quit", expand=False))
     
     loader = CommandLoader()
     
@@ -477,24 +524,24 @@ def _run_simple_interactive(model: str, provider: str, api_base: str = None, api
             prompt = typer.prompt("\n[yellow]Enter prompt[/yellow]")
             
             if prompt.lower() in ["exit", "quit", "q"]:
-                console.print("[dim]Goodbye![/dim]")
+                (console_stderr if verbose else console).print("[dim]Goodbye![/dim]")
                 break
             
             # Handle special commands (both slash and non-slash)
             if prompt.lower() in ["help", "/help"]:
-                console.print("[cyan]Built-in Commands:[/cyan]")
-                console.print("  /help           - Show this help")
-                console.print("  /commands       - List available command files")
-                console.print("  /clear          - Clear the screen")
-                console.print("  /<command> args - Run a command file")
-                console.print("")
-                console.print("[cyan]Shell Commands:[/cyan]")
-                console.print("  !<command>      - Execute shell command (e.g., !ls)")
-                console.print("")
-                console.print("[cyan]Other Commands:[/cyan]")
-                console.print("  exit/quit/q     - Exit interactive mode")
-                console.print("")
-                console.print("[dim]Type any text to send directly to the agent[/dim]")
+                (console_stderr if verbose else console).print("[cyan]Built-in Commands:[/cyan]")
+                (console_stderr if verbose else console).print("  /help           - Show this help")
+                (console_stderr if verbose else console).print("  /commands       - List available command files")
+                (console_stderr if verbose else console).print("  /clear          - Clear the screen")
+                (console_stderr if verbose else console).print("  /<command> args - Run a command file")
+                (console_stderr if verbose else console).print("")
+                (console_stderr if verbose else console).print("[cyan]Shell Commands:[/cyan]")
+                (console_stderr if verbose else console).print("  !<command>      - Execute shell command (e.g., !ls)")
+                (console_stderr if verbose else console).print("")
+                (console_stderr if verbose else console).print("[cyan]Other Commands:[/cyan]")
+                (console_stderr if verbose else console).print("  exit/quit/q     - Exit interactive mode")
+                (console_stderr if verbose else console).print("")
+                (console_stderr if verbose else console).print("[dim]Type any text to send directly to the agent[/dim]")
                 continue
             
             if prompt.lower() in ["commands", "/commands"]:
@@ -537,7 +584,7 @@ def _run_simple_interactive(model: str, provider: str, api_base: str = None, api
                 shell_cmd = prompt[1:].strip()
                 if shell_cmd:
                     user_shell = os.environ.get('SHELL', '/bin/bash')
-                    console.print(f"[dim]Executing: {shell_cmd} (using {user_shell})[/dim]")
+                    (console_stderr if verbose else console).print(f"[dim]Executing: {shell_cmd} (using {user_shell})[/dim]")
                     try:
                         import subprocess
                         result = subprocess.run(
@@ -552,13 +599,13 @@ def _run_simple_interactive(model: str, provider: str, api_base: str = None, api
                         if result.stderr:
                             console.print("[yellow]Error output:[/yellow]")
                             console.print(result.stderr)
-                        console.print(f"[dim]Exit code: {result.returncode}[/dim]")
+                        (console_stderr if verbose else console).print(f"[dim]Exit code: {result.returncode}[/dim]")
                     except subprocess.TimeoutExpired:
-                        console.print("[red]Command timed out after 30 seconds[/red]")
+                        (console_stderr if verbose else console).print("[red]Command timed out after 30 seconds[/red]")
                     except Exception as e:
-                        console.print(f"[red]Error: {e}[/red]")
+                        (console_stderr if verbose else console).print(f"[red]Error: {e}[/red]")
                 else:
-                    console.print("[yellow]Usage: !<shell command>[/yellow]")
+                    (console_stderr if verbose else console).print("[yellow]Usage: !<shell command>[/yellow]")
                 continue
             
             # Check for /command syntax
@@ -567,9 +614,9 @@ def _run_simple_interactive(model: str, provider: str, api_base: str = None, api
             if command_name:
                 final_prompt = loader.execute_command(command_name, arguments)
                 if final_prompt is None:
-                    console.print(f"[red]Command '/{command_name}' not found.[/red]")
+                    (console_stderr if verbose else console).print(f"[red]Command '/{command_name}' not found.[/red]")
                     continue
-                console.print(f"[dim]Using command: /{command_name}[/dim]")
+                (console_stderr if verbose else console).print(f"[dim]Using command: /{command_name}[/dim]")
             else:
                 final_prompt = prompt
             
@@ -600,9 +647,9 @@ def _run_simple_interactive(model: str, provider: str, api_base: str = None, api
                 ))
                 
         except KeyboardInterrupt:
-            console.print("\n[dim]Interrupted. Type 'exit' to quit.[/dim]")
+            (console_stderr if verbose else console).print("\n[dim]Interrupted. Type 'exit' to quit.[/dim]")
         except Exception as e:
-            console.print(f"\n[red]Error:[/red] {str(e)}")
+            (console_stderr if verbose else console).print(f"\n[red]Error:[/red] {str(e)}")
 
 # Create a sub-app for command management
 commands_app = typer.Typer()

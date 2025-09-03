@@ -983,7 +983,54 @@ uv run nano-cli run "Write a test file" --model claude-3-haiku-20240307 --provid
 
 # Ollama (local)
 uv run nano-cli run "List files" --model gpt-oss:20b --provider ollama
+
+# Output Format Control (new)
+uv run nano-cli run "Your prompt" -f simple    # Plain text output
+uv run nano-cli run "Your prompt" -f json      # JSON format
+uv run nano-cli run "Your prompt" -f rich      # Rich format (default)
+
+# Billing Information (new)
+uv run nano-cli run "Your prompt" --billing    # Show token usage and costs
+uv run nano-cli run "Your prompt" --billing -f json  # JSON with billing info
+
+# Combined example
+uv run nano-cli run "Write a function" --model gpt-5-mini --billing -f simple
 ```
+
+### CLI Options Reference
+
+The `nano-cli` command supports various options to control output format, billing display, and model selection:
+
+| Option | Short | Description | Example |
+|--------|-------|-------------|---------|
+| `--model` | `-m` | Specify the model to use | `--model gpt-5-mini` |
+| `--provider` | `-p` | Specify the provider | `--provider openai` |
+| `--output-format` | `-f` | Output format: simple, json, or rich (default) | `-f json` |
+| `--billing` | | Show token usage and cost information | `--billing` |
+| `--temperature` | `-t` | Model temperature (0.0-2.0) | `--temperature 0.7` |
+| `--max-tokens` | | Maximum response tokens | `--max-tokens 1000` |
+| `--session` | `-s` | Use a specific session ID | `--session abc123` |
+| `--continue` | `-c` | Continue the last session | `--continue` |
+| `--new` | `-n` | Force a new session | `--new` |
+| `--no-save` | | Don't save conversation to session history | `--no-save` |
+| `--verbose` | `-v` | Show detailed output | `--verbose` |
+
+**Output Formats:**
+- **simple**: Plain text output suitable for scripting and command-line processing (minimal, agent response only)
+- **json**: Structured JSON output for programmatic consumption  
+- **rich**: Rich formatted output with colors and panels (default)
+
+**Billing Information:**
+- Token counts and costs are hidden by default
+- Use `--billing` to show token usage and estimated costs
+- Local models (Ollama, LMStudio) show token counts but no costs
+- Cloud models (OpenAI, Anthropic) show both tokens and costs
+
+**Verbose Mode:**
+- By default, only the agent response is shown in simple format
+- Use `--verbose` to show additional information like execution time and status messages
+- Rich format always shows full information regardless of verbose setting
+- JSON format includes all metadata regardless of verbose setting
 
 ## Multi-Model Evaluation System
 

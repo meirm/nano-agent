@@ -260,7 +260,11 @@ class TokenTracker:
         # Get pricing for the model
         pricing = self._get_pricing()
         if not pricing:
-            logger.warning(f"No pricing found for {self.provider}/{self.model}")
+            # Local providers (ollama, lmstudio, ollama-native) have no costs
+            if self.provider in ["ollama", "lmstudio", "ollama-native"]:
+                logger.debug(f"Local provider {self.provider} - no costs applied")
+            else:
+                logger.warning(f"No pricing found for {self.provider}/{self.model}")
             return 0.0, 0.0, 0.0, 0.0
         
         # Calculate base costs (convert from per million to actual)
