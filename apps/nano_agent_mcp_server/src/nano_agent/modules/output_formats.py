@@ -10,11 +10,74 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 from typing import Optional, Dict, Any, List
 import json
+import re
 from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.syntax import Syntax
+
+
+def clean_agent_output(raw_output: str, show_thinking: bool = False) -> str:
+    """
+    Clean agent output by removing thinking markers and conversation structure.
+    
+    Args:
+        raw_output: The raw output from the agent that may contain thinking text
+        show_thinking: If True, return the raw output unchanged
+        
+    Returns:
+        Cleaned output with thinking markers removed
+    """
+    if show_thinking:
+        return raw_output
+    
+    # Clean the output
+    cleaned = raw_output
+    
+    # Handle different patterns for user/assistant markers
+    # Pattern 1: Remove #### user sections but keep content after #### assistant
+    if '#### assistant' in cleaned:
+        # Split by #### assistant and process each part
+        parts = cleaned.split('#### assistant')
+        result_parts = []
+        
+        for i, part in enumerate(parts):
+            if i == 0:
+                # First part - remove any #### user content
+                part = re.sub(r'####\s*user.*', '', part, flags=re.DOTALL | re.IGNORECASE)
+                if part.strip():
+                    result_parts.append(part.strip())
+            else:
+                # Parts after #### assistant markers - keep the content
+                # But remove any subsequent #### user sections
+                part = re.sub(r'####\s*user.*?(?=####|$)', '', part, flags=re.DOTALL | re.IGNORECASE)
+                if part.strip():
+                    result_parts.append(part.strip())
+        
+        cleaned = '\n\n'.join(result_parts)
+    
+    # Pattern to match thinking tags
+    thinking_pattern = r'<thinking>.*?</thinking>\s*'
+    cleaned = re.sub(thinking_pattern, '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Pattern to match "Let me think/explain" style phrases that are standalone
+    # Match "Let me explain X clearly/simply" etc.
+    let_me_pattern = r'^Let me (?:think|explain)[^.]*(?:clearly|simply|step by step)?[^.]*\.\s*\n+'
+    cleaned = re.sub(let_me_pattern, '', cleaned, flags=re.IGNORECASE | re.MULTILINE)
+    
+    # Pattern to match the standalone "A" pattern 
+    # More specific: A on its own line with whitespace
+    a_pattern = r'(?<=\n)\s+A\s*(?=\n)'
+    cleaned = re.sub(a_pattern, '', cleaned, flags=re.MULTILINE)
+    
+    # Normalize excessive whitespace (more than 2 newlines become 2)
+    cleaned = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned)
+    
+    # Strip leading and trailing whitespace
+    cleaned = cleaned.strip()
+    
+    return cleaned
 
 
 class OutputFormat(Enum):
@@ -114,16 +177,18 @@ class AgentResponse:
 class OutputFormatter(ABC):
     """Abstract base class for output formatters."""
     
-    def __init__(self, show_billing: bool = False, verbose: bool = False):
+    def __init__(self, show_billing: bool = False, verbose: bool = False, show_thinking: bool = False):
         """
         Initialize formatter.
         
         Args:
             show_billing: Whether to include billing information in output
             verbose: Whether to show verbose information (status, timing)
+            show_thinking: Whether to show agent thinking/reasoning text
         """
         self.show_billing = show_billing
         self.verbose = verbose
+        self.show_thinking = show_thinking
     
     @abstractmethod
     def format_response(self, response: AgentResponse) -> str:
@@ -177,12 +242,11 @@ class SimpleFormatter(OutputFormatter):
             if self.verbose and response.message:
                 lines.append(response.message)
             if response.data:
-                # If data is a string, use it directly
-                if isinstance(response.data, str):
-                    lines.append(response.data)
-                else:
-                    # Otherwise convert to string representation
-                    lines.append(str(response.data))
+                # Clean the output unless thinking is requested
+                data_str = str(response.data) if not isinstance(response.data, str) else response.data
+                cleaned_data = clean_agent_output(data_str, show_thinking=self.show_thinking)
+                if cleaned_data:  # Only append if there's content after cleaning
+                    lines.append(cleaned_data)
         else:
             lines.append(f"Error: {response.error or 'Unknown error'}")
             
@@ -210,21 +274,33 @@ class SimpleFormatter(OutputFormatter):
 class JSONFormatter(OutputFormatter):
     """JSON formatter for programmatic output."""
     
-    def __init__(self, show_billing: bool = False, verbose: bool = False, pretty: bool = True):
+    def __init__(self, show_billing: bool = False, verbose: bool = False, show_thinking: bool = False, pretty: bool = True):
         """
         Initialize JSON formatter.
         
         Args:
             show_billing: Whether to include billing information
             verbose: Whether to show verbose information (ignored for JSON)
+            show_thinking: Whether to show agent thinking/reasoning text
             pretty: Whether to pretty-print JSON
         """
-        super().__init__(show_billing, verbose)
+        super().__init__(show_billing, verbose, show_thinking)
         self.pretty = pretty
     
     def format_response(self, response: AgentResponse) -> str:
         """Format response as JSON."""
-        data = response.to_dict(include_billing=self.show_billing)
+        # Create a copy of response data and clean it if needed
+        response_copy = response
+        if response.data and not self.show_thinking:
+            # Clean the data for JSON output
+            data_str = str(response.data) if not isinstance(response.data, str) else response.data
+            cleaned_data = clean_agent_output(data_str, show_thinking=False)
+            # Create a new response with cleaned data for JSON serialization
+            import copy
+            response_copy = copy.copy(response)
+            response_copy.data = cleaned_data
+        
+        data = response_copy.to_dict(include_billing=self.show_billing)
         
         if self.pretty:
             return json.dumps(data, indent=2, default=str)
@@ -257,16 +333,17 @@ class JSONFormatter(OutputFormatter):
 class RichFormatter(OutputFormatter):
     """Rich formatted output (current default style)."""
     
-    def __init__(self, show_billing: bool = False, verbose: bool = False, console: Optional[Console] = None):
+    def __init__(self, show_billing: bool = False, verbose: bool = False, show_thinking: bool = False, console: Optional[Console] = None):
         """
         Initialize rich formatter.
         
         Args:
             show_billing: Whether to include billing information
             verbose: Whether to show verbose information (ignored for rich format)
+            show_thinking: Whether to show agent thinking/reasoning text
             console: Rich console instance to use
         """
-        super().__init__(show_billing, verbose)
+        super().__init__(show_billing, verbose, show_thinking)
         self.console = console or Console()
     
     def format_response(self, response: AgentResponse) -> str:
@@ -285,16 +362,13 @@ class RichFormatter(OutputFormatter):
             
             # Data/result panel
             if response.data:
-                if isinstance(response.data, str):
+                # Clean the output unless thinking is requested
+                data_str = str(response.data) if not isinstance(response.data, str) else response.data
+                cleaned_data = clean_agent_output(data_str, show_thinking=self.show_thinking)
+                
+                if cleaned_data:  # Only show panel if there's content after cleaning
                     self.console.print(Panel(
-                        response.data,
-                        title="📋 Agent Result",
-                        border_style="cyan"
-                    ))
-                else:
-                    # Format complex data
-                    self.console.print(Panel(
-                        str(response.data),
+                        cleaned_data,
                         title="📋 Agent Result",
                         border_style="cyan"
                     ))
@@ -384,6 +458,7 @@ def create_formatter(
     format_type: OutputFormat,
     show_billing: bool = False,
     verbose: bool = False,
+    show_thinking: bool = False,
     console: Optional[Console] = None
 ) -> OutputFormatter:
     """
@@ -393,17 +468,18 @@ def create_formatter(
         format_type: The output format to use
         show_billing: Whether to show billing information
         verbose: Whether to show verbose information
+        show_thinking: Whether to show agent thinking/reasoning text
         console: Rich console instance (for rich format)
         
     Returns:
         Appropriate OutputFormatter instance
     """
     if format_type == OutputFormat.SIMPLE:
-        return SimpleFormatter(show_billing=show_billing, verbose=verbose)
+        return SimpleFormatter(show_billing=show_billing, verbose=verbose, show_thinking=show_thinking)
     elif format_type == OutputFormat.JSON:
-        return JSONFormatter(show_billing=show_billing, verbose=verbose)
+        return JSONFormatter(show_billing=show_billing, verbose=verbose, show_thinking=show_thinking)
     elif format_type == OutputFormat.RICH:
-        return RichFormatter(show_billing=show_billing, verbose=verbose, console=console)
+        return RichFormatter(show_billing=show_billing, verbose=verbose, show_thinking=show_thinking, console=console)
     else:
         # Default to rich
-        return RichFormatter(show_billing=show_billing, verbose=verbose, console=console)
+        return RichFormatter(show_billing=show_billing, verbose=verbose, show_thinking=show_thinking, console=console)

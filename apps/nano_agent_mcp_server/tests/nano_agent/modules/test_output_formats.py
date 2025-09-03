@@ -9,7 +9,8 @@ from nano_agent.modules.output_formats import (
     SimpleFormatter,
     JSONFormatter,
     RichFormatter,
-    create_formatter
+    create_formatter,
+    clean_agent_output
 )
 
 
@@ -311,3 +312,150 @@ class TestCreateFormatter:
         # This would need to be handled by the enum validation
         formatter = create_formatter(OutputFormat.RICH)
         assert isinstance(formatter, RichFormatter)
+
+
+class TestContentCleaning:
+    """Test the content cleaning functionality for removing thinking text."""
+    
+    def test_clean_agent_output_with_user_assistant_markers(self):
+        """Test cleaning output with #### user and #### assistant markers."""
+        raw_output = """#### user
+What is 2+2?
+
+#### assistant
+Let me calculate that for you.
+
+2 + 2 = 4"""
+        
+        expected = """Let me calculate that for you.
+
+2 + 2 = 4"""
+        
+        cleaned = clean_agent_output(raw_output, show_thinking=False)
+        assert cleaned == expected
+    
+    def test_clean_agent_output_preserve_when_show_thinking(self):
+        """Test that content is preserved when show_thinking is True."""
+        raw_output = """#### user
+Hello
+
+#### assistant
+Hello! How can I help you?"""
+        
+        cleaned = clean_agent_output(raw_output, show_thinking=True)
+        assert cleaned == raw_output
+    
+    def test_clean_agent_output_with_thinking_tags(self):
+        """Test cleaning output with <thinking> tags."""
+        raw_output = """<thinking>
+I need to calculate 2+2. This is a simple addition.
+</thinking>
+
+The answer is 4."""
+        
+        expected = "The answer is 4."
+        cleaned = clean_agent_output(raw_output, show_thinking=False)
+        assert cleaned == expected
+    
+    def test_clean_agent_output_with_let_me_think(self):
+        """Test cleaning 'Let me think' patterns."""
+        raw_output = """Let me think about this problem step by step.
+
+The solution is to use recursion."""
+        
+        expected = "The solution is to use recursion."
+        cleaned = clean_agent_output(raw_output, show_thinking=False)
+        assert cleaned == expected
+    
+    def test_clean_agent_output_with_mixed_patterns(self):
+        """Test cleaning output with multiple pattern types."""
+        raw_output = """#### user
+Explain recursion
+
+#### assistant
+<thinking>
+This is a complex topic. I should provide a clear explanation.
+</thinking>
+
+Let me explain recursion clearly.
+
+Recursion is a programming technique where a function calls itself."""
+        
+        expected = "Recursion is a programming technique where a function calls itself."
+        cleaned = clean_agent_output(raw_output, show_thinking=False)
+        assert cleaned == expected
+    
+    def test_clean_agent_output_normalize_whitespace(self):
+        """Test that excessive whitespace is normalized."""
+        raw_output = """#### user
+Test
+
+
+
+#### assistant
+
+
+The answer is here.
+
+
+
+With extra spaces."""
+        
+        expected = """The answer is here.
+
+With extra spaces."""
+        cleaned = clean_agent_output(raw_output, show_thinking=False)
+        assert cleaned == expected
+    
+    def test_clean_agent_output_empty_after_cleaning(self):
+        """Test handling when all content is thinking text."""
+        raw_output = """#### user
+Test
+
+#### assistant"""
+        
+        cleaned = clean_agent_output(raw_output, show_thinking=False)
+        assert cleaned == ""
+    
+    def test_clean_agent_output_with_code_blocks(self):
+        """Test that code blocks are preserved during cleaning."""
+        raw_output = """#### user
+Write hello world
+
+#### assistant
+Here's the code:
+
+```python
+print("Hello, World!")
+```
+
+This prints a greeting."""
+        
+        expected = """Here's the code:
+
+```python
+print("Hello, World!")
+```
+
+This prints a greeting."""
+        
+        cleaned = clean_agent_output(raw_output, show_thinking=False)
+        assert cleaned == expected
+    
+    def test_clean_agent_output_with_special_a_pattern(self):
+        """Test cleaning the special 'A' pattern from user examples."""
+        raw_output = """Hello! I'm here to help.
+
+  A
+#### user
+No specific task, just a greeting.
+
+#### assistant
+Great! Feel free to ask if you need anything."""
+        
+        expected = """Hello! I'm here to help.
+
+Great! Feel free to ask if you need anything."""
+        
+        cleaned = clean_agent_output(raw_output, show_thinking=False)
+        assert cleaned == expected

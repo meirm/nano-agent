@@ -8,6 +8,7 @@ with various commands and interactive modes.
 
 import asyncio
 import typer
+from typing import Optional
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -152,7 +153,9 @@ def run(
     # New output control options
     billing: bool = typer.Option(False, "--billing", help="Show token usage and cost information"),
     output_format: str = typer.Option("rich", "--output-format", "-f", 
-                                      help="Output format: simple, json, or rich (default)")
+                                      help="Output format: simple, json, or rich (default)"),
+    output_thinking: bool = typer.Option(False, "--output-thinking", help="Show agent thinking and reasoning text"),
+    panel_width: Optional[int] = typer.Option(None, "--panel-width", help="Maximum width for rich output panels (default: auto-detect)")
 ):
     """Run the nano agent with a prompt. Supports /command syntax for command files."""
     # Determine provider first before checking API key
@@ -282,8 +285,11 @@ def run(
     # Execute agent without progress spinner (rich logging will show progress)
     response = _execute_nano_agent(request, enable_rich_logging=enable_rich, verbose=verbose)
     
+    # Create console with specified width if provided
+    output_console = Console(width=panel_width) if panel_width else console
+    
     # Create formatter based on output format
-    formatter = create_formatter(format_type, show_billing=billing, verbose=verbose, console=console)
+    formatter = create_formatter(format_type, show_billing=billing, verbose=verbose, show_thinking=output_thinking, console=output_console)
     
     # Convert response to AgentResponse format
     agent_response = AgentResponse(
