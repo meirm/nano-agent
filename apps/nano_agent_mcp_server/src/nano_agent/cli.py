@@ -657,6 +657,137 @@ def _run_simple_interactive(model: str, provider: str, verbose: bool = False, ap
         except Exception as e:
             (console_stderr if verbose else console).print(f"\n[red]Error:[/red] {str(e)}")
 
+@app.command("list-models")
+def list_models(
+    provider: str = typer.Option(None, "--provider", "-p", help="List models from a specific provider"),
+    all_providers: bool = typer.Option(False, "--all", "-a", help="List models from all providers"),
+    format_type: str = typer.Option("table", "--format", "-f", help="Output format: table or json"),
+    capability: str = typer.Option(None, "--capability", "-c", help="Filter models by capability"),
+    show_deprecated: bool = typer.Option(False, "--show-deprecated", help="Include deprecated models"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information")
+):
+    """List available models from AI providers."""
+    from .modules.model_providers import ProviderRegistry
+    from .modules.provider_implementations import initialize_providers
+    from rich.table import Table
+    import json
+    
+    # Initialize providers
+    initialize_providers()
+    
+    # Get registry instance
+    registry = ProviderRegistry()
+    
+    async def fetch_models():
+        """Fetch models based on parameters."""
+        if all_providers:
+            return await registry.list_all_models()
+        elif provider:
+            return await registry.list_provider_models(provider)
+        else:
+            # Default to listing from all providers
+            return await registry.list_all_models()
+    
+    try:
+        # Fetch models
+        models = asyncio.run(fetch_models())
+        
+        # Filter by capability if specified
+        if capability:
+            models = [m for m in models if capability in m.capabilities]
+        
+        # Filter out deprecated models unless requested
+        if not show_deprecated:
+            models = [m for m in models if not m.deprecated]
+        
+        # Format output
+        if format_type == "json":
+            # JSON output
+            output = [
+                {
+                    "id": m.id,
+                    "name": m.name,
+                    "provider": m.provider,
+                    "context_length": m.context_length,
+                    "capabilities": m.capabilities,
+                    "deprecated": m.deprecated,
+                    "replacement_model": m.replacement_model
+                }
+                for m in models
+            ]
+            console.print(json.dumps(output, indent=2))
+        else:
+            # Table output
+            if not models:
+                console.print("[yellow]No models found matching the criteria.[/yellow]")
+                return
+            
+            table = Table(title="Available Models")
+            table.add_column("Provider", style="cyan")
+            table.add_column("Model ID", style="green")
+            table.add_column("Name", style="white")
+            
+            if verbose:
+                table.add_column("Context", style="yellow")
+                table.add_column("Capabilities", style="blue")
+            
+            if show_deprecated:
+                table.add_column("Status", style="red")
+            
+            for model in models:
+                row = [
+                    model.provider,
+                    model.id,
+                    model.name or model.id
+                ]
+                
+                if verbose:
+                    context = f"{model.context_length:,}" if model.context_length else "N/A"
+                    capabilities = ", ".join(model.capabilities) if model.capabilities else "N/A"
+                    row.extend([context, capabilities])
+                
+                if show_deprecated:
+                    status = "DEPRECATED" if model.deprecated else "Active"
+                    row.append(status)
+                
+                table.add_row(*row)
+            
+            console.print(table)
+            
+            # Show summary
+            provider_counts = {}
+            for m in models:
+                provider_counts[m.provider] = provider_counts.get(m.provider, 0) + 1
+            
+            if verbose:
+                console.print(f"\n[dim]Total models: {len(models)}[/dim]")
+                for p, count in provider_counts.items():
+                    console.print(f"[dim]  {p}: {count} models[/dim]")
+    
+    except Exception as e:
+        from .modules.model_providers import (
+            ProviderNotFoundError,
+            ProviderConnectionError,
+            ProviderAuthenticationError
+        )
+        
+        if isinstance(e, ProviderNotFoundError):
+            console.print(f"[red]Error: Provider '{e.provider_name}' not found[/red]")
+            console.print("[dim]Available providers: openai, anthropic, ollama, lmstudio[/dim]")
+        elif isinstance(e, ProviderConnectionError):
+            console.print(f"[red]Error: Could not connect to {e.provider}[/red]")
+            console.print(f"[dim]{str(e)}[/dim]")
+        elif isinstance(e, ProviderAuthenticationError):
+            console.print(f"[red]Error: Authentication failed for {e.provider}[/red]")
+            console.print(f"[dim]{str(e)}[/dim]")
+        else:
+            console.print(f"[red]Error: {str(e)}[/red]")
+            if verbose:
+                import traceback
+                console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        
+        sys.exit(1)
+
 # Create a sub-app for command management
 commands_app = typer.Typer()
 app.add_typer(commands_app, name="commands", help="Manage nano-cli command files")

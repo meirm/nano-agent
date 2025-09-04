@@ -18,7 +18,8 @@ from .mcp_tools import (
     list_sessions,
     clear_old_sessions,
     get_available_models,
-    get_server_capabilities
+    get_server_capabilities,
+    list_provider_models
 )
 
 # Set up logging
@@ -48,7 +49,8 @@ mcp = FastMCP(
     - get_session_info: Get information about a specific session
     - list_sessions: List all sessions for the client
     - clear_old_sessions: Clean up old session data
-    - get_available_models: List available models and providers
+    - get_available_models: List available models and providers (static)
+    - list_provider_models: Query providers for current model lists with details
     - get_server_capabilities: Get server features and limitations
     """
 )
@@ -59,6 +61,7 @@ mcp.tool()(get_session_info)
 mcp.tool()(list_sessions)
 mcp.tool()(clear_old_sessions)
 mcp.tool()(get_available_models)
+mcp.tool()(list_provider_models)
 mcp.tool()(get_server_capabilities)
 
 

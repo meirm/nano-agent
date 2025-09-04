@@ -5,6 +5,11 @@ Additional MCP tools for session and configuration management.
 from typing import Dict, List, Any, Optional
 from .modules.mcp_session_manager import MCPSessionManager
 from .modules.constants import AVAILABLE_MODELS, PROVIDER_REQUIREMENTS
+from .modules.model_providers import ProviderRegistry
+from .modules.provider_implementations import initialize_providers
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def get_session_info(
@@ -134,7 +139,7 @@ async def clear_old_sessions(
 
 async def get_available_models() -> Dict[str, Any]:
     """
-    Get list of available models and providers.
+    Get list of available models and providers (from static configuration).
     
     Returns:
         Dictionary containing available models by provider
@@ -144,9 +149,18 @@ async def get_available_models() -> Dict[str, Any]:
         
         for provider, models in AVAILABLE_MODELS.items():
             if provider in PROVIDER_REQUIREMENTS:
+                # Handle both list and dict formats
+                if isinstance(models, list):
+                    model_list = models
+                    default_model = models[0] if models else None
+                else:
+                    # If it's a dict (old format)
+                    model_list = list(models.keys())
+                    default_model = next(iter(models.keys())) if models else None
+                
                 models_by_provider[provider] = {
-                    "models": list(models.keys()),
-                    "default": next(iter(models.keys())),
+                    "models": model_list,
+                    "default": default_model,
                     "requirements": PROVIDER_REQUIREMENTS[provider]
                 }
         
@@ -207,4 +221,120 @@ async def get_server_capabilities() -> Dict[str, Any]:
         return {
             "success": False,
             "error": f"Error getting server capabilities: {str(e)}"
+        }
+
+
+async def list_provider_models(
+    provider: Optional[str] = None,
+    include_deprecated: bool = False,
+    capability: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    List available models from AI providers with detailed information.
+    
+    This tool queries AI providers to get the list of available models
+    with their capabilities, context lengths, and other metadata.
+    
+    Args:
+        provider: Optional provider name to filter models (e.g., 'openai', 'anthropic', 'ollama', 'lmstudio')
+        include_deprecated: Whether to include deprecated models (default: False)
+        capability: Optional capability to filter by (e.g., 'chat', 'vision', 'function_calling')
+    
+    Returns:
+        Dictionary containing:
+        - success: Whether the operation succeeded
+        - models: List of model information dictionaries
+        - providers: List of available providers
+        - error: Error message if operation failed
+    """
+    try:
+        # Initialize providers
+        initialize_providers()
+        
+        # Get registry instance
+        registry = ProviderRegistry()
+        
+        # Fetch models based on provider parameter
+        if provider:
+            # List models from specific provider
+            models = await registry.list_provider_models(provider)
+        else:
+            # List models from all providers
+            models = await registry.list_all_models()
+        
+        # Filter by capability if specified
+        if capability:
+            models = [m for m in models if capability in m.capabilities]
+        
+        # Filter out deprecated models unless requested
+        if not include_deprecated:
+            models = [m for m in models if not m.deprecated]
+        
+        # Convert models to dictionaries
+        model_dicts = []
+        for model in models:
+            model_dict = {
+                "id": model.id,
+                "name": model.name,
+                "provider": model.provider,
+                "context_length": model.context_length,
+                "max_output_tokens": model.max_output_tokens,
+                "capabilities": model.capabilities,
+                "deprecated": model.deprecated,
+            }
+            
+            # Add optional fields if present
+            if model.input_cost_per_1k is not None:
+                model_dict["input_cost_per_1k"] = model.input_cost_per_1k
+            if model.output_cost_per_1k is not None:
+                model_dict["output_cost_per_1k"] = model.output_cost_per_1k
+            if model.replacement_model:
+                model_dict["replacement_model"] = model.replacement_model
+            if model.description:
+                model_dict["description"] = model.description
+                
+            model_dicts.append(model_dict)
+        
+        # Get list of available providers
+        available_providers = registry.list_provider_names()
+        
+        # Create summary by provider
+        provider_summary = {}
+        for m in models:
+            if m.provider not in provider_summary:
+                provider_summary[m.provider] = 0
+            provider_summary[m.provider] += 1
+        
+        return {
+            "success": True,
+            "models": model_dicts,
+            "total_count": len(model_dicts),
+            "providers": available_providers,
+            "provider_summary": provider_summary
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing provider models: {str(e)}")
+        
+        # Handle specific error types
+        from .modules.model_providers import (
+            ProviderNotFoundError,
+            ProviderConnectionError,
+            ProviderAuthenticationError
+        )
+        
+        if isinstance(e, ProviderNotFoundError):
+            error_msg = f"Provider '{e.provider_name}' not found. Available providers: openai, anthropic, ollama, lmstudio"
+        elif isinstance(e, ProviderConnectionError):
+            error_msg = f"Could not connect to provider: {str(e)}"
+        elif isinstance(e, ProviderAuthenticationError):
+            error_msg = f"Authentication failed: {str(e)}"
+        else:
+            error_msg = str(e)
+        
+        return {
+            "success": False,
+            "error": error_msg,
+            "models": [],
+            "providers": []
         }
