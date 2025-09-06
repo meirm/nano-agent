@@ -17,13 +17,11 @@ VERIFIED FINDINGS (August 2025):
 
 import os
 import pytest
-from dotenv import load_dotenv
 from openai import OpenAI
 from typing import Dict, Any
 import time
 
 # Load environment variables from .env file
-load_dotenv()
 
 # Verify API key is set
 if not os.getenv("OPENAI_API_KEY"):

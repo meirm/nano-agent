@@ -52,8 +52,8 @@ class ProviderConfig:
 @dataclass
 class NanoAgentConfig:
     """Main configuration object for Nano Agent"""
-    default_provider: str = "openai"
-    default_model: str = "gpt-5-mini"
+    default_provider: str = "ollama"
+    default_model: str = "gpt-oss:20b"
     
     providers: Dict[str, ProviderConfig] = field(default_factory=dict)
     
@@ -83,10 +83,28 @@ class NanoAgentConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'NanoAgentConfig':
         """Create config from dictionary"""
+        # Create a copy to avoid modifying the original
+        data = data.copy()
+        
+        # Remove unknown fields to prevent errors
+        # Get the fields that are actually defined in the dataclass
+        import inspect
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        
+        # Filter out any unknown fields
+        filtered_data = {k: v for k, v in data.items() if k in valid_fields}
+        
+        # Log warning for removed fields (for debugging)
+        removed_fields = set(data.keys()) - set(filtered_data.keys())
+        if removed_fields:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Ignoring unknown config fields: {removed_fields}")
+        
         # Convert provider dicts to ProviderConfig objects
-        if 'providers' in data:
+        if 'providers' in filtered_data:
             providers = {}
-            for name, provider_data in data['providers'].items():
+            for name, provider_data in filtered_data['providers'].items():
                 if isinstance(provider_data, dict):
                     # Convert model dicts to ModelConfig objects
                     if 'models' in provider_data:
@@ -100,27 +118,34 @@ class NanoAgentConfig:
                     providers[name] = ProviderConfig(name=name, **provider_data)
                 else:
                     providers[name] = provider_data
-            data['providers'] = providers
+            filtered_data['providers'] = providers
         
-        return cls(**data)
+        return cls(**filtered_data)
 
 
 class ConfigManager:
     """Manages configuration loading and merging from multiple sources"""
     
-    # Configuration file paths
-    SYSTEM_CONFIG_PATH = Path("/etc/nano-agent/config.yaml")
-    USER_CONFIG_DIR = Path.home() / ".config" / "nano-agent"
-    USER_CONFIG_PATH = USER_CONFIG_DIR / "config.yaml"
-    PROJECT_CONFIG_NAMES = [".nano-agent.yaml", ".nano-agent.yml", ".nano-agent.json"]
+    # Configuration hierarchy:
+    # For nano-agent (MCP server): Environment variables ONLY
+    # For nano-cli: env vars > ~/.config/nano-cli/config.yaml
     
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Optional[Path] = None, app_name: str = "nano-agent"):
         """
         Initialize ConfigManager
         
         Args:
             config_path: Optional explicit config file path
+            app_name: Application name ('nano-agent' or 'nano-cli')
         """
+        self.app_name = app_name
+        # Only set config paths for nano-cli
+        if app_name == "nano-cli":
+            self.user_config_dir = Path.home() / ".config" / "nano-cli"
+            self.user_config_path = self.user_config_dir / "config.yaml"
+        else:
+            self.user_config_dir = None
+            self.user_config_path = None
         self.explicit_config_path = config_path
         self._config: Optional[NanoAgentConfig] = None
         self._config_sources: List[str] = []
@@ -134,7 +159,9 @@ class ConfigManager:
     
     def load_config(self) -> NanoAgentConfig:
         """
-        Load configuration from all sources and merge them
+        Load configuration with simplified hierarchy:
+        - nano-agent: Defaults + Environment variables ONLY (no config files)
+        - nano-cli: Defaults > ~/.config/nano-cli/config.yaml > Environment variables
         
         Returns:
             Merged configuration object
@@ -143,36 +170,14 @@ class ConfigManager:
         config_dict = self._get_default_config()
         self._config_sources = ["defaults"]
         
-        # Load system configuration
-        if self.SYSTEM_CONFIG_PATH.exists():
-            system_config = self._load_config_file(self.SYSTEM_CONFIG_PATH)
-            if system_config:
-                config_dict = self._merge_configs(config_dict, system_config)
-                self._config_sources.append(f"system:{self.SYSTEM_CONFIG_PATH}")
-        
-        # Load user configuration
-        if self.USER_CONFIG_PATH.exists():
-            user_config = self._load_config_file(self.USER_CONFIG_PATH)
+        # Only load config file for nano-cli
+        if self.app_name == "nano-cli" and self.user_config_path and self.user_config_path.exists():
+            user_config = self._load_config_file(self.user_config_path)
             if user_config:
                 config_dict = self._merge_configs(config_dict, user_config)
-                self._config_sources.append(f"user:{self.USER_CONFIG_PATH}")
+                self._config_sources.append(f"user:{self.user_config_path}")
         
-        # Load project configuration
-        project_config_path = self._find_project_config()
-        if project_config_path:
-            project_config = self._load_config_file(project_config_path)
-            if project_config:
-                config_dict = self._merge_configs(config_dict, project_config)
-                self._config_sources.append(f"project:{project_config_path}")
-        
-        # Load explicit configuration if provided
-        if self.explicit_config_path and self.explicit_config_path.exists():
-            explicit_config = self._load_config_file(self.explicit_config_path)
-            if explicit_config:
-                config_dict = self._merge_configs(config_dict, explicit_config)
-                self._config_sources.append(f"explicit:{self.explicit_config_path}")
-        
-        # Apply environment variables
+        # Apply environment variables (always highest priority)
         env_config = self._load_env_config()
         if env_config:
             config_dict = self._merge_configs(config_dict, env_config)
@@ -181,7 +186,7 @@ class ConfigManager:
         # Create configuration object
         self._config = NanoAgentConfig.from_dict(config_dict)
         
-        logger.debug(f"Configuration loaded from sources: {', '.join(self._config_sources)}")
+        logger.debug(f"[{self.app_name}] Configuration loaded from sources: {', '.join(self._config_sources)}")
         
         return self._config
     
@@ -266,19 +271,6 @@ class ConfigManager:
             logger.warning(f"Failed to load config file {path}: {e}")
             return None
     
-    def _find_project_config(self) -> Optional[Path]:
-        """
-        Find project configuration file in current directory
-        
-        Returns:
-            Path to project config file or None if not found
-        """
-        cwd = Path.cwd()
-        for config_name in self.PROJECT_CONFIG_NAMES:
-            config_path = cwd / config_name
-            if config_path.exists():
-                return config_path
-        return None
     
     def _load_env_config(self) -> Dict[str, Any]:
         """
@@ -481,7 +473,18 @@ def get_config_manager() -> ConfigManager:
     """Get global ConfigManager instance"""
     global _config_manager
     if _config_manager is None:
-        _config_manager = ConfigManager()
+        # Determine app name based on whether we're running as MCP server or CLI
+        if os.environ.get("NANO_AGENT_MCP_MODE", "false").lower() == "true":
+            app_name = "nano-agent"
+        else:
+            # Check if we're running via nano-cli command
+            import sys
+            if any("nano-cli" in arg for arg in sys.argv):
+                app_name = "nano-cli"
+            else:
+                # Default to nano-cli for command line usage
+                app_name = "nano-cli"
+        _config_manager = ConfigManager(app_name=app_name)
     return _config_manager
 
 

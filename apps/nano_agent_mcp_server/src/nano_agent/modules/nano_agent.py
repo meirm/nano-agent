@@ -1009,7 +1009,9 @@ async def prompt_nano_agent(
         
         # Execute the agent (disable rich logging when called via MCP to avoid interference)
         # Use async version if we're already in an async context
-        response = await _execute_nano_agent_async(request, enable_rich_logging=(ctx is None))
+        # Check if we're running as MCP server via environment variable
+        is_mcp_mode = os.environ.get("NANO_AGENT_MCP_MODE", "false").lower() == "true"
+        response = await _execute_nano_agent_async(request, enable_rich_logging=(not is_mcp_mode))
         
         if ctx:
             await ctx.report_progress(1.0, 1.0, "Task completed")

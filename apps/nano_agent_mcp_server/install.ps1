@@ -99,6 +99,8 @@ function Install-NanoAgent {
     if ((Test-Path ".env.sample") -and !(Test-Path ".env")) {
         Copy-Item ".env.sample" ".env"
         Write-Success "Created .env file"
+    } elseif (Test-Path ".env") {
+        Write-Success "Existing .env file preserved (not overwritten)"
     }
     
     # Install dependencies and tool

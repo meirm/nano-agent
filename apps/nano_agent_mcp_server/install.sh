@@ -154,6 +154,8 @@ install_nano_agent() {
     if [ -f ".env.sample" ] && [ ! -f ".env" ]; then
         cp .env.sample .env
         print_success "Created .env file from template"
+    elif [ -f ".env" ]; then
+        print_success "Existing .env file preserved (not overwritten)"
     fi
     
     uv sync

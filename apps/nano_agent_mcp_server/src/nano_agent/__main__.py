@@ -5,11 +5,17 @@
 from .modules import typing_fix
 
 import logging
-from dotenv import load_dotenv
+import os
+import sys
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
-# Load environment variables from .env file
-load_dotenv()
+# Set up logging first
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Set environment variable to indicate we're running as MCP server
+os.environ["NANO_AGENT_MCP_MODE"] = "true"
 
 # Import our nano agent tool and additional MCP tools
 from .modules.nano_agent import prompt_nano_agent
@@ -22,9 +28,7 @@ from .mcp_tools import (
     list_provider_models
 )
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Logging already set up above
 
 # Create the MCP server instance
 mcp = FastMCP(

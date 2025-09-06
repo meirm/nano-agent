@@ -169,8 +169,6 @@ async def main():
 
 if __name__ == "__main__":
     # Load environment variables
-    from dotenv import load_dotenv
-    load_dotenv()
     
     # Run tests
     success = asyncio.run(main())

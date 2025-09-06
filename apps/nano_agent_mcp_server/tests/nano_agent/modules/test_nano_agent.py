@@ -7,10 +7,8 @@ These are integration tests that actually call the OpenAI API.
 import pytest
 import os
 from datetime import datetime
-from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
 
 from nano_agent.modules.nano_agent import (
     _execute_nano_agent,

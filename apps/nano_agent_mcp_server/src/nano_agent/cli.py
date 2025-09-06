@@ -18,10 +18,6 @@ from pathlib import Path
 import os
 import sys
 import json
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
 
 # Enable flexible configuration system
 try:

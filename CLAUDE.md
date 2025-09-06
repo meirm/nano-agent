@@ -12,12 +12,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # Setup environment
 cd apps/nano_agent_mcp_server
-cp .env.sample .env  # Add API keys
 uv sync --extra test  # Install with test dependencies
 
 # Global installation for Claude Code
 ./scripts/install.sh
 uv tool install -e .
+
+# Configure API keys via environment variables
+export OPENAI_API_KEY=your-key-here
+export ANTHROPIC_API_KEY=your-key-here  # optional
+export NANO_AGENT_DEFAULT_PROVIDER=ollama  # optional, defaults to openai
+export NANO_AGENT_DEFAULT_MODEL=gpt-oss:20b  # optional, defaults to gpt-5-mini
 ```
 
 ### Testing
@@ -85,12 +90,20 @@ HOP/LOP pattern for parallel model testing:
 - Performance evaluation commands in `.claude/commands/perf/`
 - Hook scripts in `.claude/hooks/` for development workflow
 
-## Environment Variables
+## Configuration
 
-Required in `.env` files:
+### nano-agent (MCP Server)
+Uses **environment variables ONLY**:
 - `OPENAI_API_KEY`: For GPT-5 models
 - `ANTHROPIC_API_KEY`: For Claude models (optional)
 - `OLLAMA_API_URL`: Defaults to http://localhost:11434 (optional)
+- `NANO_AGENT_DEFAULT_PROVIDER`: Default provider (e.g., "ollama")
+- `NANO_AGENT_DEFAULT_MODEL`: Default model (e.g., "gpt-oss:20b")
+
+### nano-cli
+Priority: Environment variables > `~/.config/nano-cli/config.yaml` > Defaults
+
+Same environment variables as above, plus optional config file for persistent settings.
 
 ## Important Patterns
 

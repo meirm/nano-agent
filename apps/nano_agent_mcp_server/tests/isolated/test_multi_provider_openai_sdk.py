@@ -11,10 +11,8 @@ No mocking - these are real API calls.
 import pytest
 import os
 from openai import OpenAI
-from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
 
 
 class TestOllamaProvider:

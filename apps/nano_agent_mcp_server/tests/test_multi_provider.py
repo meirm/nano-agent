@@ -9,10 +9,8 @@ import pytest
 import os
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
-from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
 
 from nano_agent.modules.provider_config import ProviderConfig
 from nano_agent.modules.constants import AVAILABLE_MODELS, PROVIDER_REQUIREMENTS
