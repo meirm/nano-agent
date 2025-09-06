@@ -1,8 +1,36 @@
-# Nano CLI Configuration
+# Nano Agent Configuration Guide
+
+This guide covers configuration for both the nano-cli and the nano-agent MCP server. Configuration can be set at multiple levels with clear precedence rules.
+
+## MCP Server Configuration
+
+The nano-agent MCP server supports multiple ways to configure default provider and model settings:
+
+### Setting Default Provider and Model
+
+#### 1. Environment Variables (Highest Priority)
+
+Set environment variables prefixed with `NANO_AGENT_`:
+
+```bash
+# Set default provider and model
+export NANO_AGENT_DEFAULT_PROVIDER=openai
+export NANO_AGENT_DEFAULT_MODEL=gpt-5-mini
+
+# Or for Anthropic
+export NANO_AGENT_DEFAULT_PROVIDER=anthropic
+export NANO_AGENT_DEFAULT_MODEL=claude-3-haiku-20240307
+
+# Or for local Ollama (built-in defaults)
+export NANO_AGENT_DEFAULT_PROVIDER=ollama
+export NANO_AGENT_DEFAULT_MODEL=gpt-oss:20b
+```
+
+## Nano CLI Configuration
 
 The nano-cli supports persistent configuration through a JSON file at `~/.nano-cli/config.json`.
 
-## Configuration File
+### Configuration File
 
 The configuration file supports the following settings:
 
@@ -174,3 +202,89 @@ rm ~/.nano-cli/config.json
 # or
 mv ~/.nano-cli/config.json ~/.nano-cli/config.json.backup
 ```
+
+## Testing Default Configuration
+
+### Check Current Defaults
+
+```bash
+# Show environment variables
+env | grep NANO_AGENT_
+
+# Test MCP server with defaults
+echo '{"prompt": "List files"}' | nano-agent
+
+# Test CLI with defaults
+nano-cli run "List files"
+```
+
+### Example: Setting Organization-Wide Defaults
+
+For a team using OpenAI primarily:
+
+1. Set environment variables in shell profile (`~/.bashrc` or `~/.zshrc`):
+```bash
+export NANO_AGENT_DEFAULT_PROVIDER=openai
+export NANO_AGENT_DEFAULT_MODEL=gpt-5-mini
+```
+
+2. Now all nano-agent commands use these defaults:
+```bash
+# Uses gpt-5-mini automatically
+nano-cli run "Create a Python script"
+
+# Claude Code will also use gpt-5-mini when calling nano-agent
+```
+
+3. Override when needed:
+```bash
+# Use a different model for complex tasks
+nano-cli run "Complex analysis" --model gpt-5 --provider openai
+
+# Use local model for testing
+nano-cli run "Test task" --model gpt-oss:20b --provider ollama
+```
+
+### Example: Project-Specific Configuration
+
+For a project that needs specific models:
+
+1. Create `.nano-agent.yaml` in project root:
+```yaml
+default_provider: anthropic
+default_model: claude-opus-4-1-20250805
+
+# Project uses specific Ollama setup
+providers:
+  ollama:
+    api_base: http://gpu-server.local:11434/v1
+```
+
+2. All commands run from this directory will use these settings:
+```bash
+cd /path/to/project
+nano-cli run "Analyze codebase"  # Uses Claude Opus 4.1
+```
+
+## Available Providers and Models
+
+### OpenAI
+- `gpt-5-nano` - Fastest, best for simple tasks
+- `gpt-5-mini` - Efficient, good for most tasks (recommended default)
+- `gpt-5` - Most powerful, best for complex reasoning
+- `gpt-4o` - Previous generation
+
+### Anthropic
+- `claude-3-haiku-20240307` - Fast and efficient
+- `claude-opus-4-20250514` - Powerful reasoning
+- `claude-opus-4-1-20250805` - Latest flagship
+- `claude-sonnet-4-20250514` - Balanced performance
+
+### Ollama (Local)
+- `gpt-oss:20b` - Local open-source model (built-in default)
+- `gpt-oss:120b` - Large local model
+- Any model installed in Ollama
+
+### LMStudio (Local)
+- `qwen/qwen3-coder-30b`
+- Any model loaded in LMStudio
