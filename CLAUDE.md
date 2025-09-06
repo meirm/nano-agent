@@ -61,9 +61,19 @@ uv run nano-agent
 ## Architecture
 
 ### Nested Agent System
-- **Outer Agent** (Claude Code): Communicates via MCP protocol, sees only `prompt_nano_agent` tool
+- **Outer Agent** (Claude Code): Communicates via MCP protocol, has access to:
+  - `prompt_nano_agent`: Full capabilities including file modifications
+  - `prompt_nano_agent_readonly`: Safe read-only mode for analysis
 - **MCP Server** (`apps/nano_agent_mcp_server`): Receives prompts, spawns internal agents
 - **Inner Agent** (OpenAI SDK): Created per request with file system tools (read_file, write_file, list_directory, get_file_info, edit_file)
+
+### Read-Only Mode
+Use `prompt_nano_agent_readonly` for safe exploration and analysis without any file system modifications. Perfect for:
+- Code analysis and reviews
+- Security audits
+- Documentation generation
+- Dependency analysis
+- Understanding unfamiliar codebases
 
 ### Multi-Provider Support
 All providers use OpenAI SDK with compatible endpoints:
@@ -73,6 +83,8 @@ All providers use OpenAI SDK with compatible endpoints:
 
 ### Key Modules
 - `modules/nano_agent.py`: Core agent execution logic using OpenAI Agent SDK
+  - `prompt_nano_agent`: Full agent with read/write capabilities
+  - `prompt_nano_agent_readonly`: Safe read-only mode for analysis
 - `modules/nano_agent_tools.py`: File system tool implementations
 - `modules/provider_config.py`: Multi-provider configuration and client setup
 - `modules/token_tracking.py`: Token usage and cost tracking

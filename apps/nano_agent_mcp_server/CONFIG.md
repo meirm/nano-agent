@@ -79,6 +79,43 @@ providers:
     api_url: http://localhost:11434
 ```
 
+## Read-Only Mode Configuration
+
+### Using Read-Only Mode
+
+The nano-agent provides a dedicated read-only mode through `prompt_nano_agent_readonly` that prevents any file system modifications. This doesn't require configuration - it's enforced at the function level.
+
+**Via MCP (Claude Desktop):**
+```python
+# Use the dedicated read-only function
+Use prompt_nano_agent_readonly to analyze the codebase
+
+# Or use the regular function with read_only flag
+Use prompt_nano_agent with read_only=true to review the code
+```
+
+**Via CLI:**
+```bash
+# Use the --read-only flag
+uv run nano-cli run "Analyze the code" --read-only
+
+# This automatically blocks write operations
+```
+
+### What Gets Blocked
+When read-only mode is active (either via `prompt_nano_agent_readonly` or `read_only=true`):
+- `write_file` - Cannot create new files
+- `edit_file` - Cannot modify existing files  
+- `create_directory` - Cannot create directories
+- `delete_file` - Cannot delete anything
+
+### Use Cases for Read-Only Mode
+- **Security Audits**: Scan for vulnerabilities without risk
+- **Code Reviews**: Analyze quality without changes
+- **Documentation**: Generate reports from existing code
+- **Learning**: Safely explore unfamiliar codebases
+- **Analysis**: Dependency graphs, architecture reviews
+
 ## Configuration Options
 
 ### ps1_format

@@ -613,6 +613,7 @@ This architecture ensures fair comparison by using the same OpenAI Agent SDK for
 
 - 🤖 **Multi-Provider Support**: Seamlessly switch between OpenAI (GPT-5), Anthropic (Claude), and Ollama (local models)
 - 🔧 **File System Operations**: Read, write, edit, and analyze files autonomously
+- 🔒 **Read-Only Mode**: Safe exploration with `prompt_nano_agent_readonly` - analyze without modifying
 - 🏗️ **Nested Agent Architecture**: MCP server spawns internal agents for task execution
 - 🎯 **Unified Interface**: All providers use the same OpenAI SDK for consistency
 - 📦 **Experiment Ready**: Decent testing, error handling, and token tracking
@@ -621,6 +622,52 @@ This architecture ensures fair comparison by using the same OpenAI Agent SDK for
 - 💬 **Session Management**: Persistent conversation history with context preservation (Claude-inspired)
 - 🎛️ **Fine-tuned Control**: Temperature, max tokens, and other model parameters
 - 🔄 **Context Continuity**: Resume previous conversations with `--continue` flag
+
+## Read-Only Mode 🔒
+
+The nano-agent includes a safe read-only mode (`prompt_nano_agent_readonly`) that prevents any file system modifications. Perfect for exploration, analysis, and reporting without risk.
+
+### When to Use Read-Only Mode
+- 🔍 **Code Analysis**: Review code structure, find patterns, identify issues
+- 🛡️ **Security Audits**: Scan for vulnerabilities without changing anything
+- 📊 **Documentation Generation**: Create reports from existing code
+- 🔗 **Dependency Analysis**: Map relationships and dependencies
+- 🎓 **Learning**: Safely explore unfamiliar codebases
+
+### Usage Examples
+
+**In Claude Desktop:**
+```python
+# Safe analysis - no files will be modified
+Use prompt_nano_agent_readonly to analyze the security vulnerabilities in this codebase
+
+# Generate documentation without creating files
+Use prompt_nano_agent_readonly to explain the authentication system
+
+# Review code quality
+Use prompt_nano_agent_readonly to identify code smells and suggest improvements
+```
+
+**Via CLI:**
+```bash
+# Analyze without modifying
+uv run nano-cli run "Review code for security issues" --read-only
+
+# Safe exploration
+uv run nano-cli run "Explain the architecture" --read-only
+```
+
+### What's Blocked in Read-Only Mode
+- ❌ `write_file` - Cannot create new files
+- ❌ `edit_file` - Cannot modify existing files
+- ❌ `create_directory` - Cannot create directories
+- ❌ `delete_file` - Cannot delete anything
+
+### What's Allowed in Read-Only Mode
+- ✅ `read_file` - Read any file content
+- ✅ `list_directory` - Browse directory structure
+- ✅ `get_file_info` - Get file metadata
+- ✅ All analysis and reporting capabilities
 
 ## Claude-Inspired Session Management 💬
 

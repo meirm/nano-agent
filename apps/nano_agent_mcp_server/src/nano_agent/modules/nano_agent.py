@@ -1103,6 +1103,92 @@ async def prompt_nano_agent(
         return error_response.model_dump()
 
 
+async def prompt_nano_agent_readonly(
+    agentic_prompt: str,
+    model: str = DEFAULT_MODEL,
+    provider: str = DEFAULT_PROVIDER,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    allowed_paths: Optional[List[str]] = None,
+    blocked_paths: Optional[List[str]] = None,
+    # Session management
+    session_id: Optional[str] = None,
+    clear_history: bool = False,
+    ctx: Any = None  # Context will be injected by FastMCP when registered
+) -> Dict[str, Any]:
+    """
+    Execute an autonomous agent in READ-ONLY mode with a natural language prompt.
+    
+    This is a safe version of prompt_nano_agent that prevents any file system modifications.
+    The agent can only read files, list directories, and analyze content - perfect for
+    exploration, analysis, and reporting tasks without risk of changing anything.
+    
+    The agent CANNOT:
+    - Write or create files
+    - Edit existing files
+    - Create directories
+    - Delete anything
+    - Make any file system modifications
+    
+    The agent CAN:
+    - Read any file content
+    - List directory contents
+    - Get file information (size, permissions, etc.)
+    - Analyze and report on code or data
+    - Generate suggestions and recommendations
+    
+    Args:
+        agentic_prompt: Natural language description of the analysis or exploration task.
+                       Examples:
+                       - "Analyze the codebase structure and create a report"
+                       - "Find all Python files and summarize their functionality"
+                       - "Review the code for security vulnerabilities"
+                       - "Explain how the authentication system works"
+        
+        model: The LLM model to use (defaults from environment or constants)
+        provider: The LLM provider (defaults from environment or constants)
+        temperature: Model temperature for response randomness (0.0-2.0)
+        max_tokens: Maximum response length in tokens
+        allowed_paths: List of paths the agent can access (whitelist)
+        blocked_paths: List of paths the agent cannot access (blacklist)
+        session_id: Optional session ID for conversation continuity
+        clear_history: If True, clears conversation history for the session
+        ctx: MCP context (automatically injected)
+    
+    Returns:
+        Dictionary with execution results, same format as prompt_nano_agent
+    
+    Examples:
+        >>> await prompt_nano_agent_readonly(
+        ...     "Analyze all Python files and identify unused imports"
+        ... )
+        {"success": True, "result": "Found 5 files with unused imports..."}
+        
+        >>> await prompt_nano_agent_readonly(
+        ...     "Create a dependency graph of the modules"
+        ... )
+        {"success": True, "result": "Module dependency analysis..."}
+    """
+    # Call the main function with read_only=True and blocked write tools
+    blocked_tools = ["write_file", "edit_file", "create_directory", "delete_file"]
+    
+    return await prompt_nano_agent(
+        agentic_prompt=agentic_prompt,
+        model=model,
+        provider=provider,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        allowed_tools=None,  # Let all read tools be available
+        blocked_tools=blocked_tools,  # Block all write operations
+        allowed_paths=allowed_paths,
+        blocked_paths=blocked_paths,
+        read_only=True,  # Enforce read-only mode
+        session_id=session_id,
+        clear_history=clear_history,
+        ctx=ctx
+    )
+
+
 # Additional utility functions
 
 async def get_agent_status() -> Dict[str, Any]:

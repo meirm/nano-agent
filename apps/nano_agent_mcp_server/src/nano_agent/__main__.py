@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 # Set environment variable to indicate we're running as MCP server
 os.environ["NANO_AGENT_MCP_MODE"] = "true"
 
-# Import our nano agent tool and additional MCP tools
-from .modules.nano_agent import prompt_nano_agent
+# Import our nano agent tools and additional MCP tools
+from .modules.nano_agent import prompt_nano_agent, prompt_nano_agent_readonly
 from .mcp_tools import (
     get_session_info,
     list_sessions,
@@ -50,6 +50,7 @@ mcp = FastMCP(
     
     Main tools:
     - prompt_nano_agent: Execute autonomous agent with full configuration options
+    - prompt_nano_agent_readonly: Execute agent in safe read-only mode (no file modifications)
     - get_session_info: Get information about a specific session
     - list_sessions: List all sessions for the client
     - clear_old_sessions: Clean up old session data
@@ -61,6 +62,7 @@ mcp = FastMCP(
 
 # Register all tools
 mcp.tool()(prompt_nano_agent)
+mcp.tool()(prompt_nano_agent_readonly)
 mcp.tool()(get_session_info)
 mcp.tool()(list_sessions)
 mcp.tool()(clear_old_sessions)

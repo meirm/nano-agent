@@ -83,35 +83,86 @@ result2 = await prompt_nano_agent(
 }
 ```
 
-### 2. get_session_info
+### 2. prompt_nano_agent_readonly
+**Safe read-only agent for analysis and exploration without file modifications**
+
+This is a specialized version of `prompt_nano_agent` that prevents any file system modifications. Perfect for code analysis, security audits, and safe exploration.
+
+#### Parameters
+- `agentic_prompt` (str): Natural language task description
+- `model` (str): Model to use (default from environment)
+- `provider` (str): Provider (default from environment)
+- `temperature` (float): Model creativity (0.0-2.0)
+- `max_tokens` (int): Maximum response tokens
+- `allowed_paths` (List[str]): Whitelist of accessible paths
+- `blocked_paths` (List[str]): Blacklist of protected paths
+- `session_id` (str): Continue specific session
+- `clear_history` (bool): Clear session conversation history
+
+#### Blocked Operations
+- ❌ `write_file` - Cannot create new files
+- ❌ `edit_file` - Cannot modify existing files
+- ❌ `create_directory` - Cannot create directories
+- ❌ `delete_file` - Cannot delete anything
+
+#### Allowed Operations
+- ✅ `read_file` - Read any file content
+- ✅ `list_directory` - Browse directory structure
+- ✅ `get_file_info` - Get file metadata
+- ✅ All analysis and reporting capabilities
+
+#### Usage Examples
+```python
+# Security audit without risk
+result = await prompt_nano_agent_readonly(
+    "Scan for security vulnerabilities in the authentication system"
+)
+
+# Code quality review
+result = await prompt_nano_agent_readonly(
+    "Analyze code quality and identify technical debt"
+)
+
+# Documentation generation
+result = await prompt_nano_agent_readonly(
+    "Generate API documentation from the codebase"
+)
+
+# Architecture analysis
+result = await prompt_nano_agent_readonly(
+    "Create a dependency graph of all modules"
+)
+```
+
+### 3. get_session_info
 **Get detailed information about a session**
 
 ```python
 result = await get_session_info("my-session-id")
 ```
 
-### 3. list_sessions
+### 4. list_sessions
 **List all sessions for the current client**
 
 ```python
 sessions = await list_sessions(limit=10)
 ```
 
-### 4. clear_old_sessions
+### 5. clear_old_sessions
 **Clean up old session data**
 
 ```python
 result = await clear_old_sessions(days=30)
 ```
 
-### 5. get_available_models
+### 6. get_available_models
 **List all available models and providers**
 
 ```python
 models = await get_available_models()
 ```
 
-### 6. get_server_capabilities
+### 7. get_server_capabilities
 **Get server features and limitations**
 
 ```python
@@ -224,11 +275,24 @@ result = await clear_old_sessions(days=7)  # Keep last 7 days
 
 ### 1. Safe Code Exploration
 ```python
-# Explore unknown codebase safely
+# Option 1: Using the dedicated read-only function (recommended)
+result = await prompt_nano_agent_readonly(
+    "Analyze this project structure and explain what it does",
+    temperature=0.2
+)
+
+# Option 2: Using the regular function with read_only flag
 result = await prompt_nano_agent(
     "Analyze this project structure and explain what it does",
     read_only=True,
     temperature=0.2
+)
+
+# Advanced: Security audit with path restrictions
+result = await prompt_nano_agent_readonly(
+    "Scan for security vulnerabilities",
+    allowed_paths=["./src", "./lib"],
+    blocked_paths=["./src/secrets", "./config/prod"]
 )
 ```
 
