@@ -1098,6 +1098,127 @@ def edit_command(name: str = typer.Argument(..., help="Name of the command to ed
                 )
 
 
+@app.command("init")
+def init(
+    provider: str = typer.Option(
+        None, "--provider", "-p", help="Set default provider (e.g., openai, anthropic, ollama)"
+    ),
+    model: str = typer.Option(
+        None, "--model", "-m", help="Set default model (e.g., gpt-5-mini, claude-3-haiku, llama3.2:latest)"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite existing config file"
+    ),
+):
+    """Initialize or regenerate the nano-cli configuration file.
+    
+    Creates ~/.config/nano-cli/config.yaml with default settings.
+    If the file already exists, prints the configuration to stdout instead of overwriting.
+    """
+    import yaml
+    from pathlib import Path
+    
+    # Determine config directory and file path
+    config_dir = Path.home() / ".config" / "nano-cli"
+    config_file = config_dir / "config.yaml"
+    
+    # Create default configuration
+    default_config = {
+        "default_provider": provider or "ollama",
+        "default_model": model or "gpt-oss:20b",
+        "providers": {
+            "openai": {
+                "api_base": "https://api.openai.com/v1",
+                "api_key_env": "OPENAI_API_KEY",
+                "known_models": [
+                    "gpt-5-mini",
+                    "gpt-5-nano", 
+                    "gpt-5",
+                    "gpt-4o",
+                    "gpt-4o-mini"
+                ],
+                "allow_unknown_models": True
+            },
+            "anthropic": {
+                "api_base": "https://api.anthropic.com/v1",
+                "api_key_env": "ANTHROPIC_API_KEY",
+                "known_models": [
+                    "claude-3-haiku-20240307",
+                    "claude-3-sonnet-20240229",
+                    "claude-3-opus-20240229"
+                ],
+                "allow_unknown_models": True
+            },
+            "ollama": {
+                "api_base": "http://localhost:11434/v1",
+                "allow_unknown_models": True,
+                "known_models": [
+                    "gpt-oss:20b",
+                    "gpt-oss:120b",
+                    "llama3.2:latest",
+                    "mistral:latest",
+                    "qwen2.5-coder:3b"
+                ]
+            },
+            "ollama-native": {
+                "api_base": "http://localhost:11434",
+                "allow_unknown_models": True
+            },
+            "lmstudio": {
+                "api_base": "http://localhost:1234/v1",
+                "allow_unknown_models": True
+            }
+        },
+        "model_aliases": {
+            "llama": "llama3.2:latest",
+            "qwen": "qwen2.5-coder:3b",
+            "gpt5": "gpt-5-mini",
+            "claude": "claude-3-haiku-20240307"
+        },
+        "max_tool_calls": 20,
+        "session_timeout": 1800,
+        "log_level": "INFO"
+    }
+    
+    # Check if config file exists
+    if config_file.exists() and not force:
+        console.print(f"[yellow]Configuration file already exists at: {config_file}[/yellow]")
+        console.print("[yellow]Use --force to overwrite, or here's the configuration that would be created:[/yellow]\n")
+        
+        # Print the configuration to stdout in YAML format
+        yaml_output = yaml.dump(default_config, default_flow_style=False, sort_keys=False)
+        syntax = Syntax(yaml_output, "yaml", theme="monokai", line_numbers=False)
+        console.print(Panel(syntax, title="Nano-CLI Configuration", expand=False))
+        
+        console.print("\n[dim]To use this configuration, either:[/dim]")
+        console.print("[dim]1. Delete the existing file and run 'nano-cli init' again[/dim]")
+        console.print("[dim]2. Use 'nano-cli init --force' to overwrite[/dim]")
+        console.print("[dim]3. Copy the above configuration manually to your config file[/dim]")
+    else:
+        # Create config directory if it doesn't exist
+        config_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Write the configuration file
+        with open(config_file, 'w') as f:
+            yaml.dump(default_config, f, default_flow_style=False, sort_keys=False)
+        
+        console.print(f"[green]✓ Configuration file created at: {config_file}[/green]")
+        
+        if provider:
+            console.print(f"[green]  Default provider set to: {provider}[/green]")
+        if model:
+            console.print(f"[green]  Default model set to: {model}[/green]")
+        
+        console.print("\n[dim]You can now use nano-cli with your configured defaults.[/dim]")
+        console.print("[dim]Edit the config file to customize providers, models, and aliases.[/dim]")
+        
+        # Show a hint about API keys if needed
+        if provider == "openai":
+            console.print("\n[yellow]Note: Remember to set OPENAI_API_KEY environment variable[/yellow]")
+        elif provider == "anthropic":
+            console.print("\n[yellow]Note: Remember to set ANTHROPIC_API_KEY environment variable[/yellow]")
+
+
 def main():
     """Main entry point for the CLI."""
     app()

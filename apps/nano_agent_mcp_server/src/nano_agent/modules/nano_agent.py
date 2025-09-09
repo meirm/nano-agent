@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 # OpenAI Agent SDK imports (required)
 from agents import RunConfig, Runner
 from agents.lifecycle import RunHooksBase
+from agents.exceptions import ModelBehaviorError
 # Rich logging imports
 from rich.console import Console
 from rich.panel import Panel
@@ -917,6 +918,62 @@ def _execute_nano_agent(
         )
         return response
 
+    except ModelBehaviorError as e:
+        execution_time = time.time() - start_time
+        
+        # Handle tool not found errors specifically
+        error_str = str(e)
+        if "Tool" in error_str and "not found" in error_str:
+            # Extract the tool name that was attempted
+            import re
+            match = re.search(r'Tool (\w+) not found', error_str)
+            attempted_tool = match.group(1) if match else "unknown"
+            
+            # Get the list of available tools based on permissions
+            available_tool_names = []
+            tools = get_nano_agent_tools(permissions=permissions)
+            for tool in tools:
+                # Get the function name from the tool
+                if hasattr(tool, '__name__'):
+                    available_tool_names.append(tool.__name__)
+            
+            error_msg = (
+                f"Tool '{attempted_tool}' not found. "
+                f"Available tools: {', '.join(available_tool_names)}. "
+                f"To list available tools, run: list_directory() to see what tools are available."
+            )
+            logger.warning(f"Model attempted to use non-existent tool: {attempted_tool}")
+            
+            return PromptNanoAgentResponse(
+                success=False,
+                error=error_msg,
+                metadata={
+                    "error_type": "ToolNotFound",
+                    "attempted_tool": attempted_tool,
+                    "available_tools": available_tool_names,
+                    "model": request.model,
+                    "provider": request.provider,
+                    "agent_sdk": True,
+                },
+                execution_time_seconds=execution_time,
+            )
+        
+        # Other ModelBehaviorError cases
+        error_msg = f"Model behavior error: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        
+        return PromptNanoAgentResponse(
+            success=False,
+            error=error_msg,
+            metadata={
+                "error_type": "ModelBehaviorError",
+                "model": request.model,
+                "provider": request.provider,
+                "agent_sdk": True,
+            },
+            execution_time_seconds=execution_time,
+        )
+        
     except Exception as e:
         execution_time = time.time() - start_time
         
