@@ -140,6 +140,9 @@ def run(
     ),
     api_key: str = typer.Option(None, help="API key (overrides environment variables)"),
     verbose: bool = typer.Option(False, help="Show detailed output"),
+    read_only: bool = typer.Option(
+        False, "--read-only", help="Disable file system modifications (safe exploration mode)"
+    ),
     # Claude-inspired options
     continue_session: bool = typer.Option(
         False, "--continue", "-c", help="Continue the last session"
@@ -321,6 +324,7 @@ def run(
         temperature=temperature if temperature is not None else DEFAULT_TEMPERATURE,
         max_tokens=max_tokens if max_tokens is not None else MAX_TOKENS,
         enable_trace=enable_trace,
+        read_only=read_only,
     )
 
     # Disable rich logging for simple/json formats

@@ -6,6 +6,7 @@ and the existing codebase, allowing gradual migration.
 """
 
 import logging
+import os
 from typing import Dict, List, Optional, Tuple
 
 from .config_manager import get_config_manager
@@ -69,10 +70,41 @@ class FlexibleProviderConfig(OriginalProviderConfig):
                     f"Model {model} not in known models for {provider}, but provider allows unknown models"
                 )
 
-        # Now call the original validation for API key and service checks
-        return OriginalProviderConfig.validate_provider_setup(
-            provider, model, available_models, provider_requirements
-        )
+        # For API key and service checks, we need to bypass the model validation
+        # but still check the provider setup
+        
+        # Check API keys
+        provider_config = config_manager.get_provider_config(provider)
+        if provider_config and provider_config.api_key_env:
+            if not os.getenv(provider_config.api_key_env):
+                return False, f"Missing environment variable: {provider_config.api_key_env}"
+        
+        # Check Ollama availability (if it's Ollama)
+        if provider == "ollama":
+            import requests
+            try:
+                # Get Ollama URL from config or environment
+                ollama_url = provider_config.api_base or os.getenv("OLLAMA_API_URL", "http://localhost:11434")
+                # Remove /v1 suffix if present for API endpoint
+                api_url = ollama_url.rstrip("/").removesuffix("/v1")
+                
+                # Check if Ollama is running
+                response = requests.get(f"{api_url}/api/tags", timeout=2)
+                if response.status_code == 200:
+                    # Check if the specific model is available
+                    tags = response.json()
+                    available = [m["name"] for m in tags.get("models", [])]
+                    if model not in available and not provider_config.allow_unknown_models:
+                        return False, f"Model {model} not pulled in Ollama. Run: ollama pull {model}"
+                else:
+                    return False, f"Ollama API returned status {response.status_code}"
+            except requests.exceptions.ConnectionError:
+                return False, "Ollama is not running. Start it with: ollama serve"
+            except Exception as e:
+                return False, f"Error checking Ollama: {str(e)}"
+        
+        # For other providers, just return success if we got here
+        return True, None
 
 
 def get_available_models_from_config() -> Dict[str, List[str]]:
