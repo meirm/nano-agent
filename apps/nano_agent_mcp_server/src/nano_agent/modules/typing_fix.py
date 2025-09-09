@@ -8,37 +8,37 @@ This fix is necessary because:
 This will be unnecessary once openai-agents updates to handle the new type structure.
 """
 
-import sys
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
+
 def apply_patches():
     """Replace problematic Union types with concrete types for compatibility."""
-    
+
     # Only apply once
-    if hasattr(sys, '_openai_typing_patched'):
+    if hasattr(sys, "_openai_typing_patched"):
         return
-    
+
     try:
         # Import the chat module and typing utilities
-        import openai.types.chat as chat_module
+        from typing import Union, get_origin
+
         import openai.types as types_module
-        from typing import get_origin, Union
-        
+        import openai.types.chat as chat_module
         # Import concrete types to use as replacements
         from openai.types.chat import (
-            ChatCompletionMessageFunctionToolCallParam,
             ChatCompletionAssistantMessageParam,
             ChatCompletionFunctionToolParam,
-        )
-        
+            ChatCompletionMessageFunctionToolCallParam)
+
         # List of patches to apply (Union type name -> concrete type to use)
         patches = {
-            'ChatCompletionMessageToolCallParam': ChatCompletionMessageFunctionToolCallParam,
+            "ChatCompletionMessageToolCallParam": ChatCompletionMessageFunctionToolCallParam,
             # Add more patches here if other Union types cause issues
         }
-        
+
         # Apply patches
         for attr_name, replacement in patches.items():
             if hasattr(chat_module, attr_name):
@@ -47,20 +47,23 @@ def apply_patches():
                 if get_origin(original) is Union:
                     setattr(chat_module, attr_name, replacement)
                     # Also update in parent module's namespace
-                    if hasattr(types_module, 'chat'):
+                    if hasattr(types_module, "chat"):
                         setattr(types_module.chat, attr_name, replacement)
-                    logger.debug(f"Patched {attr_name} from Union to {replacement.__name__}")
-        
+                    logger.debug(
+                        f"Patched {attr_name} from Union to {replacement.__name__}"
+                    )
+
         # Mark as patched
         sys._openai_typing_patched = True
         logger.debug("OpenAI typing patches applied successfully")
-        
+
     except ImportError as e:
         # OpenAI SDK not installed or different version structure
         logger.debug(f"Could not apply OpenAI typing patches: {e}")
     except Exception as e:
         # Log but don't fail - the patches are a workaround
         logger.debug(f"Error applying OpenAI typing patches: {e}")
+
 
 # Auto-apply patches on import
 apply_patches()

@@ -6,10 +6,9 @@ and reporting for OpenAI Agent SDK operations.
 """
 
 import logging
-from typing import Dict, Any, Optional, Tuple
-from datetime import datetime
 from dataclasses import dataclass, field
-import json
+from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 
 # Import Agent SDK Usage class
 try:
@@ -20,25 +19,30 @@ except ImportError:
     @dataclass
     class InputTokensDetails:
         cached_tokens: int = 0
-    
+
     @dataclass
     class OutputTokensDetails:
         reasoning_tokens: int = 0
-    
+
     @dataclass
     class Usage:
         requests: int = 0
         input_tokens: int = 0
-        input_tokens_details: InputTokensDetails = field(default_factory=lambda: InputTokensDetails())
+        input_tokens_details: InputTokensDetails = field(
+            default_factory=lambda: InputTokensDetails()
+        )
         output_tokens: int = 0
-        output_tokens_details: OutputTokensDetails = field(default_factory=lambda: OutputTokensDetails())
+        output_tokens_details: OutputTokensDetails = field(
+            default_factory=lambda: OutputTokensDetails()
+        )
         total_tokens: int = 0
-        
+
         def add(self, other: "Usage") -> None:
             self.requests += other.requests if other.requests else 0
             self.input_tokens += other.input_tokens if other.input_tokens else 0
             self.output_tokens += other.output_tokens if other.output_tokens else 0
             self.total_tokens += other.total_tokens if other.total_tokens else 0
+
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -137,14 +141,14 @@ MODEL_PRICING: Dict[str, Dict[str, Dict[str, float]]] = {
             "reasoning_token_per_million_cost": 0.00,
             "compute_cost_per_hour": 1.00,  # Lower GPU requirements
         },
-    }
+    },
 }
 
 
 @dataclass
 class TokenUsageReport:
     """Detailed token usage report."""
-    
+
     # Token counts
     total_requests: int = 0
     total_input_tokens: int = 0
@@ -152,20 +156,20 @@ class TokenUsageReport:
     total_tokens: int = 0
     cached_input_tokens: int = 0
     reasoning_tokens: int = 0
-    
+
     # Cost breakdown
     input_cost: float = 0.0
     output_cost: float = 0.0
     cached_savings: float = 0.0
     total_cost: float = 0.0
-    
+
     # Metadata
     model: str = ""
     provider: str = ""
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     duration_seconds: float = 0.0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert report to dictionary."""
         return {
@@ -191,7 +195,7 @@ class TokenUsageReport:
                 "end_time": self.end_time.isoformat() if self.end_time else None,
             },
         }
-    
+
     def format_summary(self) -> str:
         """Format a human-readable summary."""
         lines = [
@@ -213,16 +217,16 @@ class TokenUsageReport:
             f"  Cached Savings: ${self.cached_savings:.4f}",
             f"  Total: ${self.total_cost:.4f}",
         ]
-        
+
         return "\n".join(lines)
 
 
 class TokenTracker:
     """Tracks token usage and calculates costs."""
-    
+
     def __init__(self, model: str = "gpt-5-mini", provider: str = "openai"):
         """Initialize token tracker.
-        
+
         Args:
             model: Model identifier
             provider: Provider name (openai, anthropic, gpt-oss)
@@ -230,86 +234,117 @@ class TokenTracker:
         self.model = model
         self.provider = provider
         self.reset()
-    
+
     def reset(self):
         """Reset tracking counters."""
         self.total_usage = Usage()
         self.start_time = datetime.now()
-    
+
     def update(self, usage: Usage):
         """Update total usage from a Usage object.
-        
+
         Args:
             usage: Usage object from Agent SDK
         """
         self.total_usage.add(usage)
-        logger.debug(f"Updated usage: {usage.total_tokens} new tokens, total: {self.total_usage.total_tokens}")
-    
-    def calculate_cost(self, usage: Optional[Usage] = None) -> Tuple[float, float, float, float]:
+        logger.debug(
+            f"Updated usage: {usage.total_tokens} new tokens, total: {self.total_usage.total_tokens}"
+        )
+
+    def calculate_cost(
+        self, usage: Optional[Usage] = None
+    ) -> Tuple[float, float, float, float]:
         """Calculate costs based on usage.
-        
+
         Args:
             usage: Usage object to calculate cost for (defaults to total_usage)
-            
+
         Returns:
             Tuple of (input_cost, output_cost, cached_savings, total_cost)
         """
         if usage is None:
             usage = self.total_usage
-        
+
         # Get pricing for the model
         pricing = self._get_pricing()
         if not pricing:
-            logger.warning(f"No pricing found for {self.provider}/{self.model}")
+            # Local providers (ollama, lmstudio, ollama-native) have no costs
+            if self.provider in ["ollama", "lmstudio", "ollama-native"]:
+                logger.debug(f"Local provider {self.provider} - no costs applied")
+            else:
+                logger.warning(f"No pricing found for {self.provider}/{self.model}")
             return 0.0, 0.0, 0.0, 0.0
-        
+
         # Calculate base costs (convert from per million to actual)
-        input_cost = (usage.input_tokens / 1_000_000) * pricing["input_token_per_million_cost"]
-        output_cost = (usage.output_tokens / 1_000_000) * pricing["output_token_per_million_cost"]
-        
+        input_cost = (usage.input_tokens / 1_000_000) * pricing[
+            "input_token_per_million_cost"
+        ]
+        output_cost = (usage.output_tokens / 1_000_000) * pricing[
+            "output_token_per_million_cost"
+        ]
+
         # Calculate cached savings
-        cached_tokens = usage.input_tokens_details.cached_tokens if usage.input_tokens_details else 0
+        cached_tokens = (
+            usage.input_tokens_details.cached_tokens
+            if usage.input_tokens_details
+            else 0
+        )
         if cached_tokens > 0:
-            full_input_cost = (cached_tokens / 1_000_000) * pricing["input_token_per_million_cost"]
-            cached_cost = (cached_tokens / 1_000_000) * pricing.get("cached_input_token_per_million_cost", 
-                                                                    pricing["input_token_per_million_cost"] * 0.5)
+            full_input_cost = (cached_tokens / 1_000_000) * pricing[
+                "input_token_per_million_cost"
+            ]
+            cached_cost = (cached_tokens / 1_000_000) * pricing.get(
+                "cached_input_token_per_million_cost",
+                pricing["input_token_per_million_cost"] * 0.5,
+            )
             cached_savings = full_input_cost - cached_cost
         else:
             cached_savings = 0.0
-        
+
         # Add reasoning token costs if applicable
-        reasoning_tokens = usage.output_tokens_details.reasoning_tokens if usage.output_tokens_details else 0
-        if reasoning_tokens > 0 and pricing.get("reasoning_token_per_million_cost", 0) > 0:
-            reasoning_cost = (reasoning_tokens / 1_000_000) * pricing["reasoning_token_per_million_cost"]
+        reasoning_tokens = (
+            usage.output_tokens_details.reasoning_tokens
+            if usage.output_tokens_details
+            else 0
+        )
+        if (
+            reasoning_tokens > 0
+            and pricing.get("reasoning_token_per_million_cost", 0) > 0
+        ):
+            reasoning_cost = (reasoning_tokens / 1_000_000) * pricing[
+                "reasoning_token_per_million_cost"
+            ]
             output_cost += reasoning_cost
-        
+
         total_cost = input_cost + output_cost - cached_savings
-        
+
         return input_cost, output_cost, cached_savings, total_cost
-    
+
     def generate_report(self) -> TokenUsageReport:
         """Generate a comprehensive usage report.
-        
+
         Returns:
             TokenUsageReport with all tracking data
         """
         input_cost, output_cost, cached_savings, total_cost = self.calculate_cost()
-        
+
         report = TokenUsageReport(
             # Token counts
             total_requests=self.total_usage.requests,
             total_input_tokens=self.total_usage.input_tokens,
             total_output_tokens=self.total_usage.output_tokens,
             total_tokens=self.total_usage.total_tokens,
-            cached_input_tokens=self.total_usage.input_tokens_details.cached_tokens if self.total_usage.input_tokens_details else 0,
-            reasoning_tokens=self.total_usage.output_tokens_details.reasoning_tokens if self.total_usage.output_tokens_details else 0,
-            
+            cached_input_tokens=self.total_usage.input_tokens_details.cached_tokens
+            if self.total_usage.input_tokens_details
+            else 0,
+            reasoning_tokens=self.total_usage.output_tokens_details.reasoning_tokens
+            if self.total_usage.output_tokens_details
+            else 0,
             # Costs
             input_cost=input_cost,
             output_cost=output_cost,
             cached_savings=cached_savings,
             total_cost=total_cost,
-            
             # Metadata
             model=self.model,
             provider=self.provider,
@@ -317,12 +352,12 @@ class TokenTracker:
             end_time=datetime.now(),
             duration_seconds=(datetime.now() - self.start_time).total_seconds(),
         )
-        
+
         return report
-    
+
     def add_usage(self, input_tokens: int = 0, output_tokens: int = 0):
         """Add token usage manually.
-        
+
         Args:
             input_tokens: Number of input tokens
             output_tokens: Number of output tokens
@@ -332,15 +367,15 @@ class TokenTracker:
         usage.output_tokens = output_tokens
         usage.total_tokens = input_tokens + output_tokens
         self.update(usage)
-    
+
     def get_summary(self) -> Dict[str, Any]:
         """Get a summary of token usage and costs.
-        
+
         Returns:
             Dictionary with usage and cost information
         """
         input_cost, output_cost, cached_savings, total_cost = self.calculate_cost()
-        
+
         summary = {
             "total_tokens": self.total_usage.total_tokens,
             "input_tokens": self.total_usage.input_tokens,
@@ -349,71 +384,82 @@ class TokenTracker:
             "input_cost": input_cost,
             "output_cost": output_cost,
         }
-        
+
         # Add cached tokens info if available
-        if self.total_usage.input_tokens_details and self.total_usage.input_tokens_details.cached_tokens > 0:
-            summary["cached_tokens"] = self.total_usage.input_tokens_details.cached_tokens
+        if (
+            self.total_usage.input_tokens_details
+            and self.total_usage.input_tokens_details.cached_tokens > 0
+        ):
+            summary[
+                "cached_tokens"
+            ] = self.total_usage.input_tokens_details.cached_tokens
             summary["cached_savings"] = cached_savings
-        
+
         return summary
-    
+
     def _get_pricing(self) -> Optional[Dict[str, float]]:
         """Get pricing for current model and provider.
-        
+
         Returns:
             Pricing dictionary or None if not found
         """
         if self.provider not in MODEL_PRICING:
             return None
-        
+
         provider_models = MODEL_PRICING[self.provider]
         if self.model not in provider_models:
             # Try to find a default or similar model
             if self.model.startswith("gpt-5"):
                 return provider_models.get("gpt-5-mini", None)
             return None
-        
+
         return provider_models[self.model]
-    
+
     @staticmethod
     def estimate_monthly_cost(
         model: str,
         provider: str,
         daily_input_tokens: int,
         daily_output_tokens: int,
-        cache_rate: float = 0.0
+        cache_rate: float = 0.0,
     ) -> Dict[str, float]:
         """Estimate monthly costs for a usage pattern.
-        
+
         Args:
             model: Model identifier
             provider: Provider name
             daily_input_tokens: Average daily input tokens
             daily_output_tokens: Average daily output tokens
             cache_rate: Percentage of input tokens that are cached (0.0 to 1.0)
-            
+
         Returns:
             Dictionary with cost breakdown
         """
         if provider not in MODEL_PRICING or model not in MODEL_PRICING[provider]:
             return {"error": "Model not found"}
-        
+
         pricing = MODEL_PRICING[provider][model]
-        
+
         # Calculate monthly tokens
         monthly_input = daily_input_tokens * 30
         monthly_output = daily_output_tokens * 30
         monthly_cached = int(monthly_input * cache_rate)
         monthly_uncached = monthly_input - monthly_cached
-        
+
         # Calculate costs
-        uncached_cost = (monthly_uncached / 1_000_000) * pricing["input_token_per_million_cost"]
-        cached_cost = (monthly_cached / 1_000_000) * pricing.get("cached_input_token_per_million_cost",
-                                                                 pricing["input_token_per_million_cost"] * 0.5)
-        output_cost = (monthly_output / 1_000_000) * pricing["output_token_per_million_cost"]
-        
+        uncached_cost = (monthly_uncached / 1_000_000) * pricing[
+            "input_token_per_million_cost"
+        ]
+        cached_cost = (monthly_cached / 1_000_000) * pricing.get(
+            "cached_input_token_per_million_cost",
+            pricing["input_token_per_million_cost"] * 0.5,
+        )
+        output_cost = (monthly_output / 1_000_000) * pricing[
+            "output_token_per_million_cost"
+        ]
+
         total_cost = uncached_cost + cached_cost + output_cost
-        
+
         return {
             "daily_input_tokens": daily_input_tokens,
             "daily_output_tokens": daily_output_tokens,
@@ -430,10 +476,10 @@ class TokenTracker:
 
 def format_token_count(tokens: int) -> str:
     """Format token count for display.
-    
+
     Args:
         tokens: Number of tokens
-        
+
     Returns:
         Formatted string
     """
@@ -447,10 +493,10 @@ def format_token_count(tokens: int) -> str:
 
 def format_cost(cost: float) -> str:
     """Format cost for display.
-    
+
     Args:
         cost: Cost in USD
-        
+
     Returns:
         Formatted string
     """

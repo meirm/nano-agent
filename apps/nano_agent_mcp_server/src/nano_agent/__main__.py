@@ -1,29 +1,27 @@
 #!/usr/bin/env python
 """Nano Agent MCP Server - Main entry point."""
 
-# Apply typing fixes FIRST before any other imports that might use OpenAI SDK
-from .modules import typing_fix
-
 import logging
-from dotenv import load_dotenv
+import os
+
 from mcp.server.fastmcp import FastMCP
 
-# Load environment variables from .env file
-load_dotenv()
+# Apply typing fixes FIRST before any other imports that might use OpenAI SDK
 
-# Import our nano agent tool and additional MCP tools
-from .modules.nano_agent import prompt_nano_agent
-from .mcp_tools import (
-    get_session_info,
-    list_sessions,
-    clear_old_sessions,
-    get_available_models,
-    get_server_capabilities
-)
-
-# Set up logging
+# Set up logging first
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Set environment variable to indicate we're running as MCP server
+os.environ["NANO_AGENT_MCP_MODE"] = "true"
+
+from .mcp_tools import (clear_old_sessions, get_available_models,
+                        get_server_capabilities, get_session_info,
+                        list_provider_models, list_sessions)
+# Import our nano agent tools and additional MCP tools
+from .modules.nano_agent import prompt_nano_agent, prompt_nano_agent_readonly
+
+# Logging already set up above
 
 # Create the MCP server instance
 mcp = FastMCP(
@@ -45,20 +43,24 @@ mcp = FastMCP(
     
     Main tools:
     - prompt_nano_agent: Execute autonomous agent with full configuration options
+    - prompt_nano_agent_readonly: Execute agent in safe read-only mode (no file modifications)
     - get_session_info: Get information about a specific session
     - list_sessions: List all sessions for the client
     - clear_old_sessions: Clean up old session data
-    - get_available_models: List available models and providers
+    - get_available_models: List available models and providers (static)
+    - list_provider_models: Query providers for current model lists with details
     - get_server_capabilities: Get server features and limitations
-    """
+    """,
 )
 
 # Register all tools
 mcp.tool()(prompt_nano_agent)
+mcp.tool()(prompt_nano_agent_readonly)
 mcp.tool()(get_session_info)
 mcp.tool()(list_sessions)
 mcp.tool()(clear_old_sessions)
 mcp.tool()(get_available_models)
+mcp.tool()(list_provider_models)
 mcp.tool()(get_server_capabilities)
 
 

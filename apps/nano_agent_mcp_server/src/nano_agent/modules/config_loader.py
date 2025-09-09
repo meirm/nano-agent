@@ -9,25 +9,25 @@ Handles configuration loading hierarchy:
 5. Environment variable resolution in config files
 """
 
-import os
 import json
+import logging
+import os
 import re
-from pathlib import Path
-from typing import Dict, Any, Optional, Union, List
 from dataclasses import dataclass, field
 from enum import Enum
-import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
-from .config_validation import (
-    ValidationResult, ConfigValidator,
-    validate_nano_cli_config, validate_nano_agent_config, validate_project_config
-)
+from .config_validation import (ValidationResult, validate_nano_agent_config,
+                                validate_nano_cli_config,
+                                validate_project_config)
 
 logger = logging.getLogger(__name__)
 
 
 class BinaryType(Enum):
     """Enum for binary types (nano-cli vs nano-agent)."""
+
     NANO_CLI = "nano-cli"
     NANO_AGENT = "nano-agent"
 
@@ -35,6 +35,7 @@ class BinaryType(Enum):
 @dataclass
 class ConfigPaths:
     """Configuration file paths for a specific binary type."""
+
     global_config_dir: Path
     global_config_file: Path
     project_config_dir: Path
@@ -46,6 +47,7 @@ class ConfigPaths:
 @dataclass
 class LoadedConfiguration:
     """Container for loaded and merged configuration."""
+
     config: Dict[str, Any] = field(default_factory=dict)
     global_config_path: Optional[Path] = None
     project_config_path: Optional[Path] = None
@@ -58,92 +60,103 @@ class LoadedConfiguration:
 
 class ConfigurationError(Exception):
     """Exception raised for configuration loading errors."""
+
     pass
 
 
 class EnvironmentVariableResolver:
     """Handles environment variable resolution in configuration files."""
-    
+
     # Regex patterns for different environment variable syntaxes
-    VAR_PATTERN = re.compile(r'\$\{([^}]+)\}')
-    FALLBACK_PATTERN = re.compile(r'^([^:]+):-(.*)$')
-    REQUIRED_PATTERN = re.compile(r'^([^:]+):\?(.*)$')
-    
+    VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
+    FALLBACK_PATTERN = re.compile(r"^([^:]+):-(.*)$")
+    REQUIRED_PATTERN = re.compile(r"^([^:]+):\?(.*)$")
+
     @classmethod
     def resolve_variables(cls, config_data: Any, max_depth: int = 10) -> Any:
         """
         Resolve environment variables in configuration data.
-        
+
         Supports:
         - ${VAR_NAME}: Basic substitution
         - ${VAR_NAME:-default}: Fallback to default if unset
         - ${VAR_NAME:?error_message}: Required variable (error if unset)
-        
+
         Args:
             config_data: Configuration data (dict, list, or string)
             max_depth: Maximum resolution depth to prevent infinite loops
-            
+
         Returns:
             Configuration data with variables resolved
-            
+
         Raises:
             ConfigurationError: If required variables are missing or circular references detected
         """
         if max_depth <= 0:
-            raise ConfigurationError("Maximum environment variable resolution depth exceeded (possible circular reference)")
-        
+            raise ConfigurationError(
+                "Maximum environment variable resolution depth exceeded (possible circular reference)"
+            )
+
         if isinstance(config_data, dict):
-            return {key: cls.resolve_variables(value, max_depth - 1) for key, value in config_data.items()}
+            return {
+                key: cls.resolve_variables(value, max_depth - 1)
+                for key, value in config_data.items()
+            }
         elif isinstance(config_data, list):
             return [cls.resolve_variables(item, max_depth - 1) for item in config_data]
         elif isinstance(config_data, str):
             return cls._resolve_string_variables(config_data)
         else:
             return config_data
-    
+
     @classmethod
     def _resolve_string_variables(cls, text: str) -> str:
         """Resolve environment variables in a string."""
+
         def replace_var(match):
             var_expr = match.group(1)
-            
+
             # Check for required syntax: VAR:?error_message
             required_match = cls.REQUIRED_PATTERN.match(var_expr)
             if required_match:
                 var_name, error_msg = required_match.groups()
                 value = os.environ.get(var_name)
                 if value is None:
-                    raise ConfigurationError(f"Required environment variable '{var_name}' is not set: {error_msg}")
+                    raise ConfigurationError(
+                        f"Required environment variable '{var_name}' is not set: {error_msg}"
+                    )
                 return value
-            
+
             # Check for fallback syntax: VAR:-default
             fallback_match = cls.FALLBACK_PATTERN.match(var_expr)
             if fallback_match:
                 var_name, default = fallback_match.groups()
                 return os.environ.get(var_name, default)
-            
+
             # Basic substitution: VAR
-            return os.environ.get(var_expr, f"${{{var_expr}}}")  # Leave unresolved if not found
-        
+            return os.environ.get(
+                var_expr, f"${{{var_expr}}}"
+            )  # Leave unresolved if not found
+
         # Handle escaped dollar signs ($$) first
-        text = text.replace('$$', '\x00ESCAPED_DOLLAR\x00')
-        
+        text = text.replace("$$", "\x00ESCAPED_DOLLAR\x00")
+
         # Resolve variables
         resolved = cls.VAR_PATTERN.sub(replace_var, text)
-        
+
         # Restore escaped dollar signs
-        resolved = resolved.replace('\x00ESCAPED_DOLLAR\x00', '$')
-        
+        resolved = resolved.replace("\x00ESCAPED_DOLLAR\x00", "$")
+
         return resolved
 
 
 class ConfigLoader:
     """Main configuration loader class."""
-    
+
     def __init__(self, binary_type: BinaryType, working_dir: Optional[Path] = None):
         """
         Initialize configuration loader.
-        
+
         Args:
             binary_type: Whether this is nano-cli or nano-agent
             working_dir: Working directory for project config (defaults to current dir)
@@ -151,135 +164,157 @@ class ConfigLoader:
         self.binary_type = binary_type
         self.working_dir = working_dir or Path.cwd()
         self.paths = self._setup_paths()
-    
+
     def _setup_paths(self) -> ConfigPaths:
         """Setup configuration paths based on binary type."""
         home_dir = Path.home()
-        
+
         if self.binary_type == BinaryType.NANO_CLI:
             global_config_dir = home_dir / ".nano-cli"
         else:  # NANO_AGENT
             global_config_dir = home_dir / ".nano-agent"
-        
+
         # Project config is always in .nano-agent regardless of binary
         project_config_dir = self.working_dir / ".nano-agent"
-        
+
         return ConfigPaths(
             global_config_dir=global_config_dir,
             global_config_file=global_config_dir / "config.json",
             project_config_dir=project_config_dir,
             project_config_file=project_config_dir / "config.json",
             global_commands_dir=home_dir / ".nano-cli" / "commands",
-            project_commands_dir=self.working_dir / ".nano-cli" / "commands"
+            project_commands_dir=self.working_dir / ".nano-cli" / "commands",
         )
-    
+
     def load_configuration(self) -> LoadedConfiguration:
         """
         Load and merge configuration with proper hierarchy.
-        
+
         Returns:
             LoadedConfiguration object with merged config and metadata
         """
         result = LoadedConfiguration()
-        
+
         # Load global configuration
         global_config = self._load_global_config(result)
-        
+
         # Load project configuration
         project_config = self._load_project_config(result)
-        
+
         # Merge configurations (project overrides global)
         result.config = self._merge_configs(global_config, project_config)
-        
+
         # Resolve environment variables
         try:
             result.config = EnvironmentVariableResolver.resolve_variables(result.config)
         except ConfigurationError as e:
             result.errors.append(f"Environment variable resolution failed: {e}")
-        
+
         # Validate final configuration
         result.validation_result = self._validate_config(result)
-        
+
         return result
-    
+
     def _load_global_config(self, result: LoadedConfiguration) -> Dict[str, Any]:
         """Load global configuration file."""
         if not self.paths.global_config_file.exists():
-            logger.debug(f"Global config file not found: {self.paths.global_config_file}")
+            logger.debug(
+                f"Global config file not found: {self.paths.global_config_file}"
+            )
             return self._get_default_config()
-        
+
         try:
-            with open(self.paths.global_config_file, 'r', encoding='utf-8') as f:
+            with open(self.paths.global_config_file, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            
+
             result.global_config_path = self.paths.global_config_file
             result.global_config_loaded = True
             logger.debug(f"Loaded global config from: {self.paths.global_config_file}")
-            
+
             return config
         except json.JSONDecodeError as e:
-            error_msg = f"Invalid JSON in global config {self.paths.global_config_file}: {e}"
+            error_msg = (
+                f"Invalid JSON in global config {self.paths.global_config_file}: {e}"
+            )
             result.errors.append(error_msg)
             logger.error(error_msg)
             return self._get_default_config()
         except Exception as e:
-            error_msg = f"Failed to load global config {self.paths.global_config_file}: {e}"
+            error_msg = (
+                f"Failed to load global config {self.paths.global_config_file}: {e}"
+            )
             result.errors.append(error_msg)
             logger.error(error_msg)
             return self._get_default_config()
-    
+
     def _load_project_config(self, result: LoadedConfiguration) -> Dict[str, Any]:
         """Load project-specific configuration file."""
         if not self.paths.project_config_file.exists():
-            logger.debug(f"Project config file not found: {self.paths.project_config_file}")
+            logger.debug(
+                f"Project config file not found: {self.paths.project_config_file}"
+            )
             return {}
-        
+
         try:
-            with open(self.paths.project_config_file, 'r', encoding='utf-8') as f:
+            with open(self.paths.project_config_file, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            
+
             result.project_config_path = self.paths.project_config_file
             result.project_config_loaded = True
-            logger.debug(f"Loaded project config from: {self.paths.project_config_file}")
-            
+            logger.debug(
+                f"Loaded project config from: {self.paths.project_config_file}"
+            )
+
             return config
         except json.JSONDecodeError as e:
-            error_msg = f"Invalid JSON in project config {self.paths.project_config_file}: {e}"
+            error_msg = (
+                f"Invalid JSON in project config {self.paths.project_config_file}: {e}"
+            )
             result.errors.append(error_msg)
             logger.error(error_msg)
             return {}
         except Exception as e:
-            error_msg = f"Failed to load project config {self.paths.project_config_file}: {e}"
+            error_msg = (
+                f"Failed to load project config {self.paths.project_config_file}: {e}"
+            )
             result.errors.append(error_msg)
             logger.error(error_msg)
             return {}
-    
-    def _merge_configs(self, global_config: Dict[str, Any], project_config: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _merge_configs(
+        self, global_config: Dict[str, Any], project_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Merge global and project configurations.
-        
+
         Project config takes precedence over global config.
         Nested dictionaries are merged recursively.
         """
         return self._deep_merge(global_config, project_config)
-    
-    def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _deep_merge(
+        self, base: Dict[str, Any], override: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Deep merge two dictionaries.
-        
+
         Values from override take precedence over base.
         Nested dictionaries are merged recursively.
         """
         result = base.copy()
-        
+
         for key, value in override.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(value, dict)
+            ):
                 result[key] = self._deep_merge(result[key], value)
             else:
                 result[key] = value
-        
+
         return result
-    
+
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration based on binary type."""
         base_defaults = {
@@ -287,40 +322,44 @@ class ConfigLoader:
             "tool_settings": {
                 "auto_apply_edits": False,
                 "safe_mode": False,
-                "max_terminal_timeout": 30
-            }
+                "max_terminal_timeout": 30,
+            },
         }
-        
+
         if self.binary_type == BinaryType.NANO_CLI:
-            base_defaults.update({
-                "default_model": "gpt-5-mini",
-                "default_provider": "openai",
-                "temperature": 1.0,
-                "max_tokens": 4000,
-                "commands_directory": "~/.nano-cli/commands"
-            })
-        else:  # NANO_AGENT
-            base_defaults.update({
-                "agent_settings": {
-                    "max_iterations": 20,
-                    "enable_tracing": False
+            base_defaults.update(
+                {
+                    "default_model": "gpt-5-mini",
+                    "default_provider": "openai",
+                    "temperature": 1.0,
+                    "max_tokens": 4000,
+                    "commands_directory": "~/.nano-cli/commands",
                 }
-            })
-        
+            )
+        else:  # NANO_AGENT
+            base_defaults.update(
+                {"agent_settings": {"max_iterations": 20, "enable_tracing": False}}
+            )
+
         return base_defaults
-    
+
     def _validate_config(self, result: LoadedConfiguration) -> ValidationResult:
         """Validate the merged configuration using schema validation."""
         config = result.config
-        
+
         # Use appropriate validator based on binary type
         if self.binary_type == BinaryType.NANO_CLI:
             validation_result = validate_nano_cli_config(config)
         else:  # NANO_AGENT
             validation_result = validate_nano_agent_config(config)
-        
+
         # Also validate project-specific settings if present
-        project_fields = ['disabled_tools', 'restricted_paths', 'search_settings', 'project_settings']
+        project_fields = [
+            "disabled_tools",
+            "restricted_paths",
+            "search_settings",
+            "project_settings",
+        ]
         if any(field in config for field in project_fields):
             project_validation = validate_project_config(config)
             # Merge project validation results
@@ -329,30 +368,32 @@ class ConfigLoader:
             validation_result.info.extend(project_validation.info)
             if not project_validation.valid:
                 validation_result.valid = False
-        
+
         # Add validation issues to the result
         result.errors.extend(validation_result.errors)
         result.warnings.extend(validation_result.warnings)
-        
+
         logger.debug(f"Configuration validation: {validation_result.get_summary()}")
-        
+
         return validation_result
 
 
-def load_configuration(binary_type: Union[BinaryType, str], working_dir: Optional[Path] = None) -> LoadedConfiguration:
+def load_configuration(
+    binary_type: Union[BinaryType, str], working_dir: Optional[Path] = None
+) -> LoadedConfiguration:
     """
     Convenience function to load configuration.
-    
+
     Args:
         binary_type: Either BinaryType enum or string ("nano-cli" or "nano-agent")
         working_dir: Working directory for project config
-        
+
     Returns:
         LoadedConfiguration object
     """
     if isinstance(binary_type, str):
         binary_type = BinaryType(binary_type)
-    
+
     loader = ConfigLoader(binary_type, working_dir)
     return loader.load_configuration()
 
@@ -369,13 +410,13 @@ def load_nano_agent_config(working_dir: Optional[Path] = None) -> LoadedConfigur
 
 # Export main classes and functions
 __all__ = [
-    'BinaryType',
-    'ConfigPaths', 
-    'LoadedConfiguration',
-    'ConfigurationError',
-    'EnvironmentVariableResolver',
-    'ConfigLoader',
-    'load_configuration',
-    'load_nano_cli_config',
-    'load_nano_agent_config'
+    "BinaryType",
+    "ConfigPaths",
+    "LoadedConfiguration",
+    "ConfigurationError",
+    "EnvironmentVariableResolver",
+    "ConfigLoader",
+    "load_configuration",
+    "load_nano_cli_config",
+    "load_nano_agent_config",
 ]

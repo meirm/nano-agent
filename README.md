@@ -613,6 +613,7 @@ This architecture ensures fair comparison by using the same OpenAI Agent SDK for
 
 - 🤖 **Multi-Provider Support**: Seamlessly switch between OpenAI (GPT-5), Anthropic (Claude), and Ollama (local models)
 - 🔧 **File System Operations**: Read, write, edit, and analyze files autonomously
+- 🔒 **Read-Only Mode**: Safe exploration with `prompt_nano_agent_readonly` - analyze without modifying
 - 🏗️ **Nested Agent Architecture**: MCP server spawns internal agents for task execution
 - 🎯 **Unified Interface**: All providers use the same OpenAI SDK for consistency
 - 📦 **Experiment Ready**: Decent testing, error handling, and token tracking
@@ -621,6 +622,52 @@ This architecture ensures fair comparison by using the same OpenAI Agent SDK for
 - 💬 **Session Management**: Persistent conversation history with context preservation (Claude-inspired)
 - 🎛️ **Fine-tuned Control**: Temperature, max tokens, and other model parameters
 - 🔄 **Context Continuity**: Resume previous conversations with `--continue` flag
+
+## Read-Only Mode 🔒
+
+The nano-agent includes a safe read-only mode (`prompt_nano_agent_readonly`) that prevents any file system modifications. Perfect for exploration, analysis, and reporting without risk.
+
+### When to Use Read-Only Mode
+- 🔍 **Code Analysis**: Review code structure, find patterns, identify issues
+- 🛡️ **Security Audits**: Scan for vulnerabilities without changing anything
+- 📊 **Documentation Generation**: Create reports from existing code
+- 🔗 **Dependency Analysis**: Map relationships and dependencies
+- 🎓 **Learning**: Safely explore unfamiliar codebases
+
+### Usage Examples
+
+**In Claude Desktop:**
+```python
+# Safe analysis - no files will be modified
+Use prompt_nano_agent_readonly to analyze the security vulnerabilities in this codebase
+
+# Generate documentation without creating files
+Use prompt_nano_agent_readonly to explain the authentication system
+
+# Review code quality
+Use prompt_nano_agent_readonly to identify code smells and suggest improvements
+```
+
+**Via CLI:**
+```bash
+# Analyze without modifying
+uv run nano-cli run "Review code for security issues" --read-only
+
+# Safe exploration
+uv run nano-cli run "Explain the architecture" --read-only
+```
+
+### What's Blocked in Read-Only Mode
+- ❌ `write_file` - Cannot create new files
+- ❌ `edit_file` - Cannot modify existing files
+- ❌ `create_directory` - Cannot create directories
+- ❌ `delete_file` - Cannot delete anything
+
+### What's Allowed in Read-Only Mode
+- ✅ `read_file` - Read any file content
+- ✅ `list_directory` - Browse directory structure
+- ✅ `get_file_info` - Get file metadata
+- ✅ All analysis and reporting capabilities
 
 ## Claude-Inspired Session Management 💬
 
@@ -983,7 +1030,54 @@ uv run nano-cli run "Write a test file" --model claude-3-haiku-20240307 --provid
 
 # Ollama (local)
 uv run nano-cli run "List files" --model gpt-oss:20b --provider ollama
+
+# Output Format Control (new)
+uv run nano-cli run "Your prompt" -f simple    # Plain text output
+uv run nano-cli run "Your prompt" -f json      # JSON format
+uv run nano-cli run "Your prompt" -f rich      # Rich format (default)
+
+# Billing Information (new)
+uv run nano-cli run "Your prompt" --billing    # Show token usage and costs
+uv run nano-cli run "Your prompt" --billing -f json  # JSON with billing info
+
+# Combined example
+uv run nano-cli run "Write a function" --model gpt-5-mini --billing -f simple
 ```
+
+### CLI Options Reference
+
+The `nano-cli` command supports various options to control output format, billing display, and model selection:
+
+| Option | Short | Description | Example |
+|--------|-------|-------------|---------|
+| `--model` | `-m` | Specify the model to use | `--model gpt-5-mini` |
+| `--provider` | `-p` | Specify the provider | `--provider openai` |
+| `--output-format` | `-f` | Output format: simple, json, or rich (default) | `-f json` |
+| `--billing` | | Show token usage and cost information | `--billing` |
+| `--temperature` | `-t` | Model temperature (0.0-2.0) | `--temperature 0.7` |
+| `--max-tokens` | | Maximum response tokens | `--max-tokens 1000` |
+| `--session` | `-s` | Use a specific session ID | `--session abc123` |
+| `--continue` | `-c` | Continue the last session | `--continue` |
+| `--new` | `-n` | Force a new session | `--new` |
+| `--no-save` | | Don't save conversation to session history | `--no-save` |
+| `--verbose` | `-v` | Show detailed output | `--verbose` |
+
+**Output Formats:**
+- **simple**: Plain text output suitable for scripting and command-line processing (minimal, agent response only)
+- **json**: Structured JSON output for programmatic consumption  
+- **rich**: Rich formatted output with colors and panels (default)
+
+**Billing Information:**
+- Token counts and costs are hidden by default
+- Use `--billing` to show token usage and estimated costs
+- Local models (Ollama, LMStudio) show token counts but no costs
+- Cloud models (OpenAI, Anthropic) show both tokens and costs
+
+**Verbose Mode:**
+- By default, only the agent response is shown in simple format
+- Use `--verbose` to show additional information like execution time and status messages
+- Rich format always shows full information regardless of verbose setting
+- JSON format includes all metadata regardless of verbose setting
 
 ## Multi-Model Evaluation System
 

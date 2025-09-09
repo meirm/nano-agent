@@ -154,6 +154,8 @@ install_nano_agent() {
     if [ -f ".env.sample" ] && [ ! -f ".env" ]; then
         cp .env.sample .env
         print_success "Created .env file from template"
+    elif [ -f ".env" ]; then
+        print_success "Existing .env file preserved (not overwritten)"
     fi
     
     uv sync
@@ -196,38 +198,23 @@ EOF
     fi
 }
 
-setup_claude_desktop() {
-    print_step "Setting up Claude Desktop integration..."
+show_claude_desktop_instructions() {
+    print_step "Claude Desktop Integration Instructions"
     
-    # Detect Claude Desktop config location
-    CLAUDE_CONFIG_DIR=""
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Claude"
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        # Linux
-        CLAUDE_CONFIG_DIR="$HOME/.config/Claude"
-    elif [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
-        # Windows
-        CLAUDE_CONFIG_DIR="$APPDATA/Claude"
+    # Get the uv tool installation path
+    UV_TOOL_BIN="$(uv tool dir)/bin"
+    NANO_AGENT_PATH="$UV_TOOL_BIN/nano-agent"
+    
+    # Check if nano-agent is in PATH or use full path
+    if command -v nano-agent >/dev/null 2>&1; then
+        NANO_AGENT_CMD="nano-agent"
+    else
+        NANO_AGENT_CMD="$NANO_AGENT_PATH"
     fi
     
-    if [ -n "$CLAUDE_CONFIG_DIR" ]; then
-        mkdir -p "$CLAUDE_CONFIG_DIR"
-        
-        # Get the uv tool installation path
-        UV_TOOL_BIN="$(uv tool dir)/bin"
-        NANO_AGENT_PATH="$UV_TOOL_BIN/nano-agent"
-        
-        # Check if nano-agent is in PATH or use full path
-        if command -v nano-agent >/dev/null 2>&1; then
-            NANO_AGENT_CMD="nano-agent"
-        else
-            NANO_AGENT_CMD="$NANO_AGENT_PATH"
-        fi
-        
-        # Create Claude Desktop MCP configuration
-        cat > "$CLAUDE_CONFIG_DIR/claude_desktop_config.json" << EOF
+    # Create a sample configuration file that users can reference
+    SAMPLE_CONFIG="$CONFIG_DIR/claude_desktop_sample.json"
+    cat > "$SAMPLE_CONFIG" << EOF
 {
   "mcpServers": {
     "nano-agent": {
@@ -240,30 +227,59 @@ setup_claude_desktop() {
   }
 }
 EOF
-        
-        print_success "Claude Desktop configuration created at $CLAUDE_CONFIG_DIR/claude_desktop_config.json"
-        
-        cat << EOF
+    
+    print_success "Sample configuration saved to: $SAMPLE_CONFIG"
+    
+    cat << EOF
 
-${BOLD}${GREEN}Claude Desktop Setup Complete!${NC}
+${BOLD}${YELLOW}📋 Manual Claude Desktop Setup Instructions${NC}
 
-To use nano-agent with Claude Desktop:
-1. Restart Claude Desktop if it's running
-2. Open Claude Desktop and look for the 🔌 icon
-3. Nano-agent tools should appear in the MCP section
+To use nano-agent with Claude Desktop, you need to manually add it to your configuration:
 
-Available tools in Claude Desktop:
+${BOLD}1. Locate your Claude Desktop configuration file:${NC}
+   • macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
+   • Linux: ~/.config/Claude/claude_desktop_config.json
+   • Windows: %APPDATA%\\Claude\\claude_desktop_config.json
+
+${BOLD}2. Add the nano-agent server configuration:${NC}
+   
+   If the file doesn't exist, create it with this content:
+   ${BLUE}
+   {
+     "mcpServers": {
+       "nano-agent": {
+         "command": "$NANO_AGENT_CMD",
+         "args": [],
+         "env": {
+           "NANO_AGENT_MCP_MODE": "true"
+         }
+       }
+     }
+   }
+   ${NC}
+   
+   If the file exists, add the "nano-agent" section to the existing "mcpServers" object.
+   
+   ${YELLOW}⚠️  IMPORTANT: Be careful not to overwrite existing server configurations!${NC}
+
+${BOLD}3. Restart Claude Desktop${NC}
+
+${BOLD}4. Verify the connection:${NC}
+   • Look for the 🔌 icon in Claude Desktop
+   • Nano-agent tools should appear in the MCP section
+
+${BOLD}Reference configuration saved at:${NC}
+   $SAMPLE_CONFIG
+
+${BOLD}Available tools in Claude Desktop:${NC}
 • prompt_nano_agent - Execute autonomous agent tasks
+• list_provider_models - List available AI models
 • get_session_info - View session information  
 • list_sessions - List your conversation sessions
 • get_available_models - Check available AI models
 • get_server_capabilities - View server features
 
 EOF
-    else
-        print_warning "Could not detect Claude Desktop configuration directory"
-        echo "Please manually add nano-agent to your Claude Desktop MCP configuration"
-    fi
 }
 
 setup_api_keys() {
@@ -535,7 +551,7 @@ main() {
     install_nano_agent
     setup_configuration
     setup_api_keys
-    setup_claude_desktop
+    show_claude_desktop_instructions
     test_installation
     show_completion_message
 }

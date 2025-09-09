@@ -99,6 +99,8 @@ function Install-NanoAgent {
     if ((Test-Path ".env.sample") -and !(Test-Path ".env")) {
         Copy-Item ".env.sample" ".env"
         Write-Success "Created .env file"
+    } elseif (Test-Path ".env") {
+        Write-Success "Existing .env file preserved (not overwritten)"
     }
     
     # Install dependencies and tool
@@ -124,16 +126,12 @@ function Setup-Configuration {
     Write-Success "Configuration created at $ConfigDir\config.json"
 }
 
-function Setup-ClaudeDesktop {
+function Show-ClaudeDesktopInstructions {
     if ($NoClaudeDesktop) {
         return
     }
     
-    Write-Step "Setting up Claude Desktop integration..."
-    
-    # Find Claude Desktop config directory
-    $claudeConfigDir = "$env:APPDATA\Claude"
-    New-Item -Path $claudeConfigDir -ItemType Directory -Force | Out-Null
+    Write-Step "Claude Desktop Integration Instructions"
     
     # Get nano-agent path
     $nanoAgentPath = Get-Command nano-agent -ErrorAction SilentlyContinue
@@ -144,8 +142,11 @@ function Setup-ClaudeDesktop {
         $nanoAgentCmd = "$toolDir\Scripts\nano-agent.exe"
     }
     
-    # Create Claude Desktop config
-    $mcpConfig = @{
+    # Create sample config for reference
+    $configDir = "$env:USERPROFILE\.nano-cli"
+    New-Item -Path $configDir -ItemType Directory -Force | Out-Null
+    
+    $sampleConfig = @{
         mcpServers = @{
             "nano-agent" = @{
                 command = $nanoAgentCmd
@@ -157,16 +158,34 @@ function Setup-ClaudeDesktop {
         }
     } | ConvertTo-Json -Depth 4
     
-    $mcpConfig | Out-File -FilePath "$claudeConfigDir\claude_desktop_config.json" -Encoding UTF8
-    Write-Success "Claude Desktop configuration created"
+    $sampleConfig | Out-File -FilePath "$configDir\claude_desktop_sample.json" -Encoding UTF8
+    Write-Success "Sample configuration saved to: $configDir\claude_desktop_sample.json"
     
     Write-Host ""
-    Write-Host "Claude Desktop Setup Complete!" -ForegroundColor Green -BackgroundColor Black
+    Write-Host "📋 Manual Claude Desktop Setup Instructions" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "To use with Claude Desktop:"
-    Write-Host "1. Restart Claude Desktop"
-    Write-Host "2. Look for the 🔌 icon"
-    Write-Host "3. Try: 'Use nano-agent to create a hello world script'"
+    Write-Host "To use nano-agent with Claude Desktop, you need to manually add it to your configuration:"
+    Write-Host ""
+    Write-Host "1. Locate your Claude Desktop configuration file:" -ForegroundColor Cyan
+    Write-Host "   $env:APPDATA\Claude\claude_desktop_config.json"
+    Write-Host ""
+    Write-Host "2. Add the nano-agent server configuration:" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "   If the file doesn't exist, create it with this content:" -ForegroundColor White
+    Write-Host $sampleConfig -ForegroundColor Blue
+    Write-Host ""
+    Write-Host "   If the file exists, add the 'nano-agent' section to the existing 'mcpServers' object." -ForegroundColor White
+    Write-Host ""
+    Write-Host "   ⚠️  IMPORTANT: Be careful not to overwrite existing server configurations!" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "3. Restart Claude Desktop" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "4. Verify the connection:" -ForegroundColor Cyan
+    Write-Host "   • Look for the 🔌 icon in Claude Desktop"
+    Write-Host "   • Nano-agent tools should appear in the MCP section"
+    Write-Host ""
+    Write-Host "Reference configuration saved at:" -ForegroundColor Green
+    Write-Host "   $configDir\claude_desktop_sample.json"
     Write-Host ""
 }
 
@@ -217,7 +236,7 @@ function Main {
     Install-UV
     Install-NanoAgent
     Setup-Configuration
-    Setup-ClaudeDesktop
+    Show-ClaudeDesktopInstructions
     Show-Completion
 }
 

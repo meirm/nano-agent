@@ -12,12 +12,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # Setup environment
 cd apps/nano_agent_mcp_server
-cp .env.sample .env  # Add API keys
 uv sync --extra test  # Install with test dependencies
 
 # Global installation for Claude Code
 ./scripts/install.sh
 uv tool install -e .
+
+# Configure API keys via environment variables
+export OPENAI_API_KEY=your-key-here
+export ANTHROPIC_API_KEY=your-key-here  # optional
+export NANO_AGENT_DEFAULT_PROVIDER=ollama  # optional, defaults to openai
+export NANO_AGENT_DEFAULT_MODEL=gpt-oss:20b  # optional, defaults to gpt-5-mini
 ```
 
 ### Testing
@@ -56,9 +61,19 @@ uv run nano-agent
 ## Architecture
 
 ### Nested Agent System
-- **Outer Agent** (Claude Code): Communicates via MCP protocol, sees only `prompt_nano_agent` tool
+- **Outer Agent** (Claude Code): Communicates via MCP protocol, has access to:
+  - `prompt_nano_agent`: Full capabilities including file modifications
+  - `prompt_nano_agent_readonly`: Safe read-only mode for analysis
 - **MCP Server** (`apps/nano_agent_mcp_server`): Receives prompts, spawns internal agents
 - **Inner Agent** (OpenAI SDK): Created per request with file system tools (read_file, write_file, list_directory, get_file_info, edit_file)
+
+### Read-Only Mode
+Use `prompt_nano_agent_readonly` for safe exploration and analysis without any file system modifications. Perfect for:
+- Code analysis and reviews
+- Security audits
+- Documentation generation
+- Dependency analysis
+- Understanding unfamiliar codebases
 
 ### Multi-Provider Support
 All providers use OpenAI SDK with compatible endpoints:
@@ -68,6 +83,8 @@ All providers use OpenAI SDK with compatible endpoints:
 
 ### Key Modules
 - `modules/nano_agent.py`: Core agent execution logic using OpenAI Agent SDK
+  - `prompt_nano_agent`: Full agent with read/write capabilities
+  - `prompt_nano_agent_readonly`: Safe read-only mode for analysis
 - `modules/nano_agent_tools.py`: File system tool implementations
 - `modules/provider_config.py`: Multi-provider configuration and client setup
 - `modules/token_tracking.py`: Token usage and cost tracking
@@ -85,12 +102,20 @@ HOP/LOP pattern for parallel model testing:
 - Performance evaluation commands in `.claude/commands/perf/`
 - Hook scripts in `.claude/hooks/` for development workflow
 
-## Environment Variables
+## Configuration
 
-Required in `.env` files:
+### nano-agent (MCP Server)
+Uses **environment variables ONLY**:
 - `OPENAI_API_KEY`: For GPT-5 models
 - `ANTHROPIC_API_KEY`: For Claude models (optional)
 - `OLLAMA_API_URL`: Defaults to http://localhost:11434 (optional)
+- `NANO_AGENT_DEFAULT_PROVIDER`: Default provider (e.g., "ollama")
+- `NANO_AGENT_DEFAULT_MODEL`: Default model (e.g., "gpt-oss:20b")
+
+### nano-cli
+Priority: Environment variables > `~/.config/nano-cli/config.yaml` > Defaults
+
+Same environment variables as above, plus optional config file for persistent settings.
 
 ## Important Patterns
 

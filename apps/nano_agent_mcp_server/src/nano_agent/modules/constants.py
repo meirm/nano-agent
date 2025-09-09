@@ -5,9 +5,16 @@ This module contains all shared constants, default values, and configuration
 used across the nano agent codebase.
 """
 
+import os
+
 # Default Model Configuration
-DEFAULT_MODEL = "gpt-oss:20b"  # Local open-source model, efficient for most tasks
-DEFAULT_PROVIDER = "ollama"
+# Check environment variables first, then fall back to hardcoded defaults
+DEFAULT_MODEL = os.getenv(
+    "NANO_AGENT_DEFAULT_MODEL", "gpt-5-mini"
+)  # Default to gpt-5-mini if not set
+DEFAULT_PROVIDER = os.getenv(
+    "NANO_AGENT_DEFAULT_PROVIDER", "openai"
+)  # Default to openai if not set
 
 # Available Models by Provider
 AVAILABLE_MODELS = {
@@ -101,9 +108,7 @@ If asked about general information, respond and do not use any tools.
 
 # Error Messages
 ERROR_NO_API_KEY = "{} environment variable is not set"
-ERROR_PROVIDER_NOT_SUPPORTED = (
-    "Provider '{}' not supported. Available providers: openai, anthropic, ollama, lmstudio, ollama-native"
-)
+ERROR_PROVIDER_NOT_SUPPORTED = "Provider '{}' not supported. Available providers: openai, anthropic, ollama, lmstudio, ollama-native"
 ERROR_FILE_NOT_FOUND = "Error: File not found: {}"
 ERROR_NOT_A_FILE = "Error: Path is not a file: {}"
 ERROR_DIR_NOT_FOUND = "Error: Directory not found: {}"

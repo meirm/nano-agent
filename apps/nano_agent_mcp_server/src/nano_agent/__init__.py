@@ -1,5 +1,14 @@
 # Apply typing fixes at package initialization - must be first!
 from .modules import typing_fix
 
+# Enable flexible configuration if available
+try:
+    from .modules.config_integration import enable_flexible_configuration
+
+    enable_flexible_configuration()
+except ImportError:
+    pass
+
+
 def hello() -> str:
     return "Hello from nano-agent!"
