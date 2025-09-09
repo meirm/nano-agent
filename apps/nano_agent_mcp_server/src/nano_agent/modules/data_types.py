@@ -267,6 +267,10 @@ class PromptNanoAgentRequest(BaseModel):
         default=None,
         description="Maximum number of tool calls allowed (None for default, -1 for unlimited)",
     )
+    dev_mode: bool = Field(
+        default=False,
+        description="Development mode - show detailed errors for debugging",
+    )
 
 
 class PromptNanoAgentResponse(BaseModel):

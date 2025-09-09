@@ -103,6 +103,19 @@ When given a task:
 3. Complete the task step by step
 4. Verify your work
 
+IMPORTANT TOOL CALLING INSTRUCTIONS:
+- When calling a tool, output ONLY the JSON arguments - no explanatory text
+- Do NOT include reasoning, thoughts, or explanations before the JSON
+- The JSON must be valid and complete on its own
+
+CORRECT tool call format:
+{"file_path": "/path/to/file.py"}
+
+INCORRECT tool call format (DO NOT DO THIS):
+Let me read this file {"file_path": "/path/to/file.py"}
+I need to check {"file_path": "/path/to/file.py"}
+Reading the file now: {"file_path": "/path/to/file.py"}
+
 Be thorough but concise. Always verify files exist before trying to read them.
 When writing files, ensure the content is correct before saving.
 

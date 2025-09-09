@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional
 from agents import RunConfig, Runner
 from agents.lifecycle import RunHooksBase
 from agents.exceptions import ModelBehaviorError
+# OpenAI exceptions for error handling
+from openai import InternalServerError
 # Rich logging imports
 from rich.console import Console
 from rich.panel import Panel
@@ -806,72 +808,140 @@ def _execute_nano_agent(
         else:
             max_turns = MAX_AGENT_TURNS
         
-        try:
-            result = Runner.run_sync(
-                agent,
-                full_prompt,
-                max_turns=max_turns,
-                run_config=RunConfig(
-                    workflow_name="nano_agent_task",
-                    trace_metadata={
-                        "model": request.model,
-                        "provider": request.provider,
-                        "timestamp": datetime.now().isoformat(),
-                        "has_history": has_history,  # Now a string
-                    },
-                ),
-                hooks=hooks,
-            )
-        except RuntimeError as e:
-            if "no current event loop" in str(e).lower():
-                # Fallback: use asyncio.run if run_sync fails
-                async def run_agent():
-                    return await Runner.run(
-                        agent,
-                        full_prompt,  # Use the full prompt with context
-                        max_turns=max_turns,
-                        run_config=RunConfig(
-                            workflow_name="nano_agent_task",
-                            trace_metadata={
-                                "model": request.model,
-                                "provider": request.provider,
-                                "timestamp": datetime.now().isoformat(),
-                                "has_history": has_history,
-                            },
-                        ),
-                        hooks=hooks,
+        # Retry logic for JSON parsing errors
+        max_retries = 2
+        retry_count = 0
+        last_error = None
+        
+        while retry_count <= max_retries:
+            try:
+                # If this is a retry after a JSON parsing error, modify the prompt
+                if retry_count > 0 and last_error:
+                    retry_prompt = (
+                        f"{full_prompt}\n\n"
+                        f"IMPORTANT: The previous attempt failed because of improper tool calling format. "
+                        f"Remember to output ONLY valid JSON when calling tools, with no explanatory text before it. "
+                        f"For example, to read a file, output only: {{\"file_path\": \"/path/to/file\"}}"
                     )
-
-                # Create event loop with proper cleanup handling
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    result = loop.run_until_complete(run_agent())
-                finally:
-                    try:
-                        # Give pending tasks a moment to complete
-                        pending = asyncio.all_tasks(loop)
-                        if pending:
-                            # Cancel all pending tasks
-                            for task in pending:
-                                task.cancel()
-                            # Wait briefly for cancellations to process
-                            loop.run_until_complete(
-                                asyncio.wait_for(
-                                    asyncio.gather(*pending, return_exceptions=True),
-                                    timeout=1.0
+                    logger.info(f"Retrying with clarification (attempt {retry_count + 1}/{max_retries + 1})")
+                else:
+                    retry_prompt = full_prompt
+                
+                result = Runner.run_sync(
+                    agent,
+                    retry_prompt,
+                    max_turns=max_turns,
+                    run_config=RunConfig(
+                        workflow_name="nano_agent_task",
+                        trace_metadata={
+                            "model": request.model,
+                            "provider": request.provider,
+                            "timestamp": datetime.now().isoformat(),
+                            "has_history": has_history,  # Now a string
+                            "retry_attempt": str(retry_count),
+                        },
+                    ),
+                    hooks=hooks,
+                )
+                # Success - break out of retry loop
+                break
+                
+            except InternalServerError as e:
+                error_str = str(e)
+                # Check if this is a JSON parsing error from tool calls
+                if "error parsing tool call" in error_str and "invalid character" in error_str:
+                    last_error = e
+                    retry_count += 1
+                    
+                    if retry_count > max_retries:
+                        logger.error(f"Failed after {max_retries} retries for JSON parsing error")
+                        # Re-raise the error after exhausting retries
+                        raise
+                    else:
+                        logger.warning(f"JSON parsing error in tool call, retrying ({retry_count}/{max_retries}): {error_str[:200]}")
+                        # Continue to next iteration for retry
+                        continue
+                else:
+                    # Not a JSON parsing error, re-raise immediately
+                    raise
+            except RuntimeError as e:
+                if "no current event loop" in str(e).lower():
+                    # Fallback: use asyncio.run if run_sync fails
+                    async def run_agent():
+                        # Apply same retry logic for async case
+                        retry_count_async = 0
+                        while retry_count_async <= max_retries:
+                            try:
+                                if retry_count_async > 0:
+                                    async_retry_prompt = (
+                                        f"{full_prompt}\n\n"
+                                        f"IMPORTANT: The previous attempt failed because of improper tool calling format. "
+                                        f"Remember to output ONLY valid JSON when calling tools, with no explanatory text before it. "
+                                        f"For example, to read a file, output only: {{\"file_path\": \"/path/to/file\"}}"
+                                    )
+                                    logger.info(f"Async retry with clarification (attempt {retry_count_async + 1}/{max_retries + 1})")
+                                else:
+                                    async_retry_prompt = full_prompt
+                                
+                                return await Runner.run(
+                                    agent,
+                                    async_retry_prompt,  # Use the retry prompt
+                                    max_turns=max_turns,
+                                    run_config=RunConfig(
+                                        workflow_name="nano_agent_task",
+                                        trace_metadata={
+                                            "model": request.model,
+                                            "provider": request.provider,
+                                            "timestamp": datetime.now().isoformat(),
+                                            "has_history": has_history,
+                                            "retry_attempt": str(retry_count_async),
+                                        },
+                                    ),
+                                    hooks=hooks,
                                 )
-                            )
-                    except (asyncio.TimeoutError, asyncio.CancelledError):
-                        pass  # Expected when cancelling tasks
+                            except InternalServerError as e:
+                                error_str = str(e)
+                                if "error parsing tool call" in error_str and "invalid character" in error_str:
+                                    retry_count_async += 1
+                                    if retry_count_async > max_retries:
+                                        logger.error(f"Async failed after {max_retries} retries for JSON parsing error")
+                                        raise
+                                    else:
+                                        logger.warning(f"Async JSON parsing error, retrying ({retry_count_async}/{max_retries})")
+                                        continue
+                                else:
+                                    raise
+
+                    # Create event loop with proper cleanup handling
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        result = loop.run_until_complete(run_agent())
                     finally:
-                        # Ensure loop is closed
                         try:
-                            loop.close()
-                        except Exception:
-                            pass  # Ignore errors during close
-            else:
-                raise
+                            # Give pending tasks a moment to complete
+                            pending = asyncio.all_tasks(loop)
+                            if pending:
+                                # Cancel all pending tasks
+                                for task in pending:
+                                    task.cancel()
+                                # Wait briefly for cancellations to process
+                                loop.run_until_complete(
+                                    asyncio.wait_for(
+                                        asyncio.gather(*pending, return_exceptions=True),
+                                        timeout=1.0
+                                    )
+                                )
+                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                            pass  # Expected when cancelling tasks
+                        finally:
+                            # Ensure loop is closed
+                            try:
+                                loop.close()
+                            except Exception:
+                                pass  # Ignore errors during close
+                else:
+                    raise
 
         execution_time = time.time() - start_time
 
@@ -929,50 +999,66 @@ def _execute_nano_agent(
             match = re.search(r'Tool (\w+) not found', error_str)
             attempted_tool = match.group(1) if match else "unknown"
             
-            # Get the list of available tools based on permissions
-            available_tool_names = []
-            tools = get_nano_agent_tools(permissions=permissions)
-            for tool in tools:
-                # Get the function name from the tool
-                if hasattr(tool, '__name__'):
-                    available_tool_names.append(tool.__name__)
-            
-            error_msg = (
-                f"Tool '{attempted_tool}' not found. "
-                f"Available tools: {', '.join(available_tool_names)}. "
-                f"To list available tools, run: list_directory() to see what tools are available."
-            )
-            logger.warning(f"Model attempted to use non-existent tool: {attempted_tool}")
+            # In dev mode, provide detailed error information
+            if request.dev_mode:
+                # Get the list of available tools based on permissions
+                available_tool_names = []
+                tools = get_nano_agent_tools(permissions=permissions)
+                for tool in tools:
+                    # Get the function name from the tool
+                    if hasattr(tool, '__name__'):
+                        available_tool_names.append(tool.__name__)
+                
+                error_msg = (
+                    f"Tool '{attempted_tool}' not found. "
+                    f"Available tools: {', '.join(available_tool_names)}. "
+                    f"To list available tools, run: list_directory() to see what tools are available."
+                )
+                logger.warning(f"Model attempted to use non-existent tool: {attempted_tool}")
+                
+                return PromptNanoAgentResponse(
+                    success=False,
+                    error=error_msg,
+                    metadata={
+                        "error_type": "ToolNotFound",
+                        "attempted_tool": attempted_tool,
+                        "available_tools": available_tool_names,
+                        "model": request.model,
+                        "provider": request.provider,
+                        "agent_sdk": True,
+                    },
+                    execution_time_seconds=execution_time,
+                )
+            else:
+                # In non-dev mode, don't return an error - let the model retry
+                # Log the issue for debugging but don't fail the request
+                logger.info(f"Model attempted non-existent tool '{attempted_tool}', allowing retry")
+                
+                # Re-raise the exception to let the agent SDK handle it naturally
+                # This allows the model to self-correct and try again
+                raise
+        
+        # Other ModelBehaviorError cases
+        if request.dev_mode:
+            # In dev mode, return detailed error
+            error_msg = f"Model behavior error: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             
             return PromptNanoAgentResponse(
                 success=False,
                 error=error_msg,
                 metadata={
-                    "error_type": "ToolNotFound",
-                    "attempted_tool": attempted_tool,
-                    "available_tools": available_tool_names,
+                    "error_type": "ModelBehaviorError",
                     "model": request.model,
                     "provider": request.provider,
                     "agent_sdk": True,
                 },
                 execution_time_seconds=execution_time,
             )
-        
-        # Other ModelBehaviorError cases
-        error_msg = f"Model behavior error: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        
-        return PromptNanoAgentResponse(
-            success=False,
-            error=error_msg,
-            metadata={
-                "error_type": "ModelBehaviorError",
-                "model": request.model,
-                "provider": request.provider,
-                "agent_sdk": True,
-            },
-            execution_time_seconds=execution_time,
-        )
+        else:
+            # In non-dev mode, let the model retry
+            logger.info(f"Model behavior error: {str(e)}, allowing retry")
+            raise
         
     except Exception as e:
         execution_time = time.time() - start_time

@@ -954,7 +954,7 @@ class InteractiveSession:
 
             except KeyboardInterrupt:
                 console.print(
-                    "\n[dim]Use 'exit' to quit or Ctrl+C again to force exit.[/dim]"
+                    "\n[dim]Use 'exit' to quit or Ctrl+D to force exit.[/dim]"
                 )
                 continue
             except EOFError:

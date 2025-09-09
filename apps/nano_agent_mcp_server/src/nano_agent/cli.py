@@ -202,6 +202,11 @@ def run(
         "--panel-width",
         help="Maximum width for rich output panels (default: auto-detect)",
     ),
+    dev: bool = typer.Option(
+        False,
+        "--dev",
+        help="Development mode - show detailed error messages for debugging",
+    ),
 ):
     """Run the nano agent with a prompt. Supports /command syntax for command files."""
     # Determine provider first before checking API key
@@ -355,6 +360,7 @@ def run(
         enable_trace=enable_trace,
         read_only=read_only,
         max_tool_calls=max_tool_calls_value,
+        dev_mode=dev,
     )
 
     # Disable rich logging for simple/json formats
