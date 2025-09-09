@@ -6,7 +6,7 @@
 
 ## What is Nano Agent?
 
-Nano Agent is a production-ready MCP (Model Context Protocol) server that provides autonomous AI agents with file system capabilities, enterprise-grade security, and seamless multi-provider support. Whether you're using OpenAI's GPT-5, Anthropic's Claude, or local Ollama models, Nano Agent delivers consistent, powerful agent capabilities through a unified interface.
+Nano Agent is a evolving MCP (Model Context Protocol) server that provides autonomous AI agents with file system capabilities, enterprise-grade security, and seamless multi-provider support. Whether you're using OpenAI's GPT-5, Anthropic's Claude, or local Ollama models, Nano Agent delivers consistent, powerful agent capabilities through a unified interface.
 
 ### Why Nano Agent?
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The OpenAI Agents SDK enables building production-ready agentic AI applications with minimal abstractions. This guide focuses on long-running coding agents that complete engineering work autonomously.
+The OpenAI Agents SDK enables building evolving agentic AI applications with minimal abstractions. This guide focuses on long-running coding agents that complete engineering work autonomously.
 
 ## Core Architecture
 
@@ -49,7 +49,7 @@ CORE_ENGINEERING_PROMPT = """You are an expert software engineer focused on comp
 Core Principles:
 1. COMPLETION: Work until the task is fully complete and tested
 2. VERIFICATION: Always verify your work with tests and linting
-3. QUALITY: Write production-ready, maintainable code
+3. QUALITY: Write evolving, maintainable code
 4. CONTEXT: Understand the codebase before making changes
 5. ITERATION: Fix issues immediately when found
 
@@ -720,7 +720,7 @@ ERROR RECOVERY:
 - When blocked: Explain the issue and propose solutions
 
 QUALITY STANDARDS:
-- Code must be production-ready
+- Code must be evolving
 - All tests must pass
 - No linting errors
 - Documentation for complex logic
@@ -972,4 +972,4 @@ if __name__ == "__main__":
     mcp.run()
 ```
 
-This documentation provides a comprehensive foundation for building sophisticated, long-running engineering agents using the OpenAI Agents SDK. The nano-agent implementation demonstrates production-ready patterns for autonomous task completion with proper monitoring, error handling, and user feedback.
+This documentation provides a comprehensive foundation for building sophisticated, long-running engineering agents using the OpenAI Agents SDK. The nano-agent implementation demonstrates evolving patterns for autonomous task completion with proper monitoring, error handling, and user feedback.
