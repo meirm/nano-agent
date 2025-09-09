@@ -52,36 +52,76 @@ cd nano-agent/apps/nano_agent_mcp_server
 
 ## 💡 Core Features
 
-### 1. Multi-Provider LLM Support
+### 1. Flexible Configuration System 📝
+
+- **Hierarchical YAML/JSON configuration** with multiple loading levels
+- **Config management CLI** (`nano-cli config`) for easy setup
+- **Multiple config examples** (development, multi-provider, ollama-only)
+- **Environment variable override system** for CI/CD integration
+- **No hardcoded model restrictions** - use ANY model with ANY provider
+
+### 2. Interactive Mode & CLI Enhancements 💬
+
+- **Full interactive CLI** (`nano-cli interactive`) with rich terminal UI
+- **Welcome messages and tips** for better user experience
+- **Session management** with history tracking and replay
+- **Rich terminal output** with colors, tables, and markdown rendering
+- **Keyboard shortcuts** and command completion
+- **Progress indicators** and spinners for long-running operations
+
+### 3. Multi-Provider LLM Support
 
 | Provider | Models | Use Case | Cost |
 |----------|---------|----------|------|
 | **OpenAI** | gpt-5-nano, gpt-5-mini, gpt-5, gpt-4o | Production, high-quality results | $$$ |
 | **Anthropic** | claude-3-haiku, claude-opus-4, claude-sonnet-4 | Complex reasoning, long context | $$$$ |
-| **Ollama** | gpt-oss:20b, gpt-oss:120b, mistral, llama | Local, privacy-focused, cost-effective | Free |
+| **Ollama** | ANY local model (gpt-oss:20b, mistral, llama, etc.) | Local, privacy-focused, cost-effective | Free |
 | **LMStudio** | Any GGUF model | Custom models, experimentation | Free |
 
-### 2. Comprehensive Tool Suite
+### 4. Enhanced Tool System 🛠️
 
-The agent has access to 9 powerful tools:
+The agent has access to an expanded suite of tools:
 
 ```python
 # File Operations
-- read_file      # Read any file with encoding support
-- write_file     # Create/overwrite files
-- edit_file      # Precise string replacements
-- list_directory # Browse file system
+- read_file       # Read any file with encoding support
+- write_file      # Create/overwrite files
+- edit_file       # Precise string replacements
+- list_directory  # Browse file system
+- get_file_info   # Metadata, size, permissions
 
 # Search & Analysis  
-- grep_search    # Regex pattern search across files
-- search_files   # Fuzzy filename matching
-- get_file_info  # Metadata, size, permissions
+- grep_file       # Search within specific files
+- search_files    # Find files by pattern
+- bash_command    # Execute shell commands with full I/O control
+- get_current_time # Time utilities for scheduling
 
-# System Operations
-- bash_command   # Execute shell commands with full I/O control
+# MCP Integration
+- MCP tools for Claude Code integration
+- Tool call limits and safety features
 ```
 
-### 3. Security & Permissions
+### 5. Commands & Agents System 🤖
+
+- **Command loader** with markdown-based command definitions
+- **Agent loader** with YAML frontmatter metadata support
+- **Cascade command system** for complex multi-step workflows
+- **Custom agents** (analyst, coder, creative, h4x0r, etc.)
+- **Command files** in `~/.nano-cli/commands/` for user customization
+- **Agent profiles** for specialized behaviors
+
+### 6. Hook System for Customization 🔗
+
+- **Pre/post execution hooks** for workflow customization
+- **Hook manager** with JSON configuration
+- **Example hooks provided**:
+  - Logging and monitoring
+  - Security checks
+  - Performance monitoring
+  - Prompt filtering
+- **Easy setup scripts** for installation
+
+### 7. Security & Permissions
 
 ```python
 # Granular Tool Control
@@ -96,12 +136,57 @@ blocked_paths=["/etc", "~/.ssh"]    # Prevent sensitive access
 read_only=True  # Disable all write operations for safe exploration
 ```
 
-### 4. Session Management
+### 8. Session Management 💾
 
 - **Persistent History**: Conversations maintained across requests
+- **Session persistence** across CLI runs with state preservation
+- **MCP session manager** for Claude Desktop integration
 - **Context Preservation**: ~90% context retention
 - **Token Tracking**: Usage and cost monitoring per session
 - **Multi-Session**: Handle multiple projects simultaneously
+- **Session-based configuration** for project-specific settings
+
+### 9. Output Formats & UI 🎨
+
+- **Rich terminal output** with colors, tables, and formatting
+- **JSON output mode** for scripting and automation
+- **Markdown rendering** in terminal for better readability
+- **Progress indicators** and spinners for long operations
+- **Clean error messages** without stack traces
+
+### 10. Installation & Setup 📦
+
+- **Install scripts** for Unix/Linux/macOS and Windows
+- **Quick install option** for rapid deployment
+- **PowerShell installer** for Windows users
+- **Init command** for first-time setup and configuration
+- **Auto-detection** of system requirements
+
+### 11. Comprehensive Documentation 📚
+
+- **MCP Usage Guide** for Claude Desktop integration
+- **CLI Usage Guide** with examples and best practices
+- **Claude Desktop Setup** instructions
+- **Migration Guide** for upgrading from older versions
+- **Hook Documentation** for customization
+- **Agent-OS framework** integration docs
+- **HOP-LOP evaluation pattern** documentation
+
+### 12. Testing & Development Tools 🔧
+
+- **Expanded test coverage** including:
+  - Config loader tests
+  - Provider implementation tests
+  - Output format tests
+  - Hook system tests
+  - MCP tools tests
+  - Permission system tests
+- **Integration tests** for all providers
+- **Coordinator module** for orchestration
+- **Config validation** system
+- **Model provider config** abstraction
+- **Ollama wrapper** for better integration
+- **Token tracking** improvements
 
 ## 🎭 Usage Patterns
 

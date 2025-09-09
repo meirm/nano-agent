@@ -10,14 +10,16 @@ Nano Agent is a evolving MCP (Model Context Protocol) server that provides auton
 
 ### Why Nano Agent?
 
-- **🚀 Production Ready**: Not a POC - battle-tested with real workloads
+- **🚀 Production Ready**: Battle-tested with real workloads and comprehensive testing
 - **🔐 Enterprise Security**: Fine-grained permissions, path restrictions, read-only mode
 - **🤖 Unlimited Models**: Use ANY model from ANY provider - no hardcoded restrictions
-- **⚙️ Flexible Configuration**: YAML-based config for custom providers and endpoints
-- **💬 Stateful Sessions**: Persistent conversations with context preservation
-- **📦 5-Minute Setup**: Install and integrate with Claude Desktop instantly
-- **🎯 Task Delegation**: HOP/LOP system for complex multi-agent workflows
+- **⚙️ Flexible Configuration**: Hierarchical YAML/JSON config with environment overrides
+- **💬 Interactive Mode**: Rich terminal UI with session management and command completion
+- **🔗 Hook System**: Customizable pre/post execution hooks for workflow automation
+- **📦 5-Minute Setup**: Install scripts for all platforms with auto-configuration
+- **🎯 Commands & Agents**: Extensible markdown-based commands and agent profiles
 - **💰 Cost Tracking**: Token usage and cost estimation across all providers
+- **📚 Comprehensive Docs**: Extensive guides for MCP, CLI, setup, and migration
 
 ## Quick Start
 
@@ -42,6 +44,9 @@ Use nano-agent in read-only mode to audit security vulnerabilities
 
 **Via CLI**:
 ```bash
+# Interactive mode with rich terminal UI
+nano-cli interactive --provider ollama --model gpt-oss:20b
+
 # Quick test with any model
 nano-cli run "Create a hello world script" --model gpt-5-mini
 
@@ -54,8 +59,12 @@ nano-cli run "Write a function" --model llama3.2:latest --provider ollama
 # List available models
 nano-cli list-models --provider ollama
 
-# Continue conversation
+# Continue conversation with session persistence
 nano-cli run "Add error handling to that function" --continue
+
+# Use custom commands and agents
+nano-cli run '/analyze "Review this code for security issues"'
+nano-cli run "Explain this code" --agent analyst
 ```
 
 ## Core Features
@@ -221,25 +230,33 @@ hop_prompt = "Implement user authentication with tests and docs"
 
 ### 🛠️ Rich Development Experience
 
-**Interactive Mode**
+**Interactive Mode with Enhanced UI**
 ```bash
 nano-cli interactive
 # Features:
+# - Rich terminal UI with colors and tables
 # - Command history with arrow keys
 # - Tab completion for commands
-# - Rich formatted output
-# - Session persistence
+# - Welcome messages and helpful tips
+# - Session persistence across runs
 # - Real-time token tracking
+# - Markdown rendering in terminal
 ```
 
-**Command File System**
+**Command & Agent System**
 ```bash
-# Create reusable command templates
+# Create custom command templates
 nano-cli commands create code-review
 nano-cli run '/code-review "src/auth"'
 
-# List available commands
+# Use specialized agents
+nano-cli run "Analyze code" --agent analyst
+nano-cli run "Write tests" --agent coder
+nano-cli run "Generate ideas" --agent creative
+
+# List available commands and agents
 nano-cli commands list
+nano-cli agents list
 ```
 
 **Output Formats**
@@ -247,7 +264,84 @@ nano-cli commands list
 nano-cli run "Task" -f rich     # Beautiful terminal output (default)
 nano-cli run "Task" -f json     # Structured JSON for scripts
 nano-cli run "Task" -f simple   # Plain text for piping
+nano-cli run "Task" -f markdown # Formatted markdown output
 ```
+
+### 🔗 Hook System for Automation
+
+**Customize agent behavior with hooks**:
+```bash
+# Setup example hooks
+nano-cli hooks install
+
+# Available hooks:
+# - Pre-execution: Filter/modify prompts before processing
+# - Post-execution: Log results, send notifications
+# - Security checks: Validate operations before execution
+# - Performance monitoring: Track execution metrics
+```
+
+**Example hook configuration** (`~/.nano-cli/hooks.json`):
+```json
+{
+  "pre_execution": ["security_check.py", "prompt_filter.py"],
+  "post_execution": ["log_results.sh", "notify.py"],
+  "on_error": ["error_handler.py"]
+}
+```
+
+### ⚙️ Flexible Configuration System
+
+**Hierarchical configuration** with multiple levels:
+```yaml
+# ~/.config/nano-cli/config.yaml
+providers:
+  ollama:
+    base_url: "http://localhost:11434/v1"
+    models:
+      - gpt-oss:20b
+      - mistral:latest
+  custom:
+    base_url: "https://your-api.com/v1"
+    api_key: "${CUSTOM_API_KEY}"
+    
+defaults:
+  provider: ollama
+  model: gpt-oss:20b
+  max_tool_calls: 30
+  temperature: 0.7
+```
+
+**Environment variable overrides**:
+```bash
+export NANO_AGENT_DEFAULT_PROVIDER=ollama
+export NANO_AGENT_DEFAULT_MODEL=gpt-oss:120b
+export NANO_AGENT_MAX_TOOL_CALLS=50
+```
+
+### 🛠️ Enhanced Tool System
+
+**Expanded tool suite with new capabilities**:
+```python
+# File Operations
+- read_file       # Read any file with encoding support
+- write_file      # Create/overwrite files  
+- edit_file       # Precise string replacements
+- list_directory  # Browse file system
+- get_file_info   # Metadata, size, permissions
+
+# Search & Analysis (NEW)
+- grep_file       # Search within specific files
+- search_files    # Find files by pattern matching
+- bash_command    # Execute shell commands safely
+- get_current_time # Time utilities for scheduling
+```
+
+**MCP Integration Features**:
+- Tool call limits for safety
+- Granular permission control
+- Path-based access restrictions
+- Read-only mode support
 
 ## Architecture
 
@@ -523,9 +617,43 @@ uv sync --extra test
 - [ ] Visual Studio Code extension
 - [ ] GitHub Copilot integration
 
+## Documentation 📚
+
+### Comprehensive Guides
+- **[MCP Usage Guide](apps/nano_agent_mcp_server/MCP_USAGE_GUIDE.md)** - Claude Desktop integration
+- **[CLI Usage Guide](apps/nano_agent_mcp_server/NANO_CLI_USAGE.md)** - Complete CLI reference
+- **[Configuration Guide](apps/nano_agent_mcp_server/CONFIG.md)** - Setup and customization
+- **[Hook Documentation](apps/nano_agent_mcp_server/HOOKS.md)** - Automation and customization
+- **[Commands Guide](apps/nano_agent_mcp_server/COMMANDS.md)** - Custom commands and agents
+- **[Migration Guide](apps/nano_agent_mcp_server/docs/MIGRATION_GUIDE.md)** - Upgrading from older versions
+
+### Additional Resources
+- **[HOP-LOP Pattern](HOP-LOP-GUIDE.md)** - Task delegation architecture
+- **[Agent-OS Framework](.agent-os/)** - Product specs and standards
+- **[Examples](examples/)** - Sample configurations and use cases
+
+## Testing Infrastructure 🧪
+
+### Comprehensive Test Coverage
+- **Config system tests** - Configuration loading and validation
+- **Provider tests** - All providers (OpenAI, Anthropic, Ollama, LMStudio)
+- **Tool tests** - File operations, search, bash commands
+- **Hook system tests** - Pre/post execution hooks
+- **MCP integration tests** - Claude Desktop compatibility
+- **Permission tests** - Security and access control
+- **Output format tests** - Rich, JSON, markdown rendering
+
+### Run Tests
+```bash
+cd apps/nano_agent_mcp_server
+uv run pytest tests/ -v              # Run all tests
+uv run pytest tests/ -k "provider"   # Run provider tests
+uv run pytest tests/ -k "config"     # Run config tests
+```
+
 ## Support
 
-- **Documentation**: [Full docs](https://github.com/meirm/nano-agent/wiki)
+- **Documentation**: See comprehensive guides above
 - **Issues**: [GitHub Issues](https://github.com/meirm/nano-agent/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/meirm/nano-agent/discussions)
 - **Examples**: [/examples](examples/) directory
