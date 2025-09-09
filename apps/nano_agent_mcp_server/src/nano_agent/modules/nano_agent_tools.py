@@ -7,12 +7,13 @@ available to the agent during execution.
 """
 
 import asyncio
+import difflib
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from typing import Any, Dict, Optional
-# TODO: add grep search tool and search files tool
 
 # Import function_tool decorator from agents SDK
 try:
@@ -48,14 +49,213 @@ logger = logging.getLogger(__name__)
 def _grep_search_impl(request: GrepSearchRequest) -> GrepSearchResponse:
     """
     Internal implementation of grep_search tool.
+    
+    Args:
+        request: Validated request with pattern, file_pattern, and context_lines
+    
+    Returns:
+        Response with formatted search results or error information
     """
-    pass # TODO: implement grep search tool implementation
+    try:
+        # Get the working directory to search in
+        search_dir = get_working_directory()
+        
+        # Compile the regex pattern
+        try:
+            pattern = re.compile(request.pattern, re.MULTILINE)
+        except re.error as e:
+            logger.warning(f"Invalid regex pattern '{request.pattern}': {e}")
+            return GrepSearchResponse(
+                content="",
+                error=f"Invalid regex pattern '{request.pattern}': {str(e)}"
+            )
+        
+        results = []
+        total_matches = 0
+        
+        # Determine which files to search
+        if request.file_pattern:
+            # Use glob pattern to filter files
+            try:
+                file_paths = list(search_dir.rglob(request.file_pattern))
+            except Exception as e:
+                logger.warning(f"Invalid file pattern '{request.file_pattern}': {e}")
+                return GrepSearchResponse(
+                    content="",
+                    error=f"Invalid file pattern '{request.file_pattern}': {str(e)}"
+                )
+        else:
+            # Search all text files (exclude common binary and hidden files)
+            file_paths = []
+            for file_path in search_dir.rglob('*'):
+                if (file_path.is_file() and 
+                    not file_path.name.startswith('.') and
+                    not any(file_path.name.endswith(ext) for ext in 
+                           ['.pyc', '.pyo', '.so', '.dylib', '.dll', '.exe', '.bin',
+                            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.svg',
+                            '.mp3', '.mp4', '.avi', '.mov', '.wav', '.zip', '.tar',
+                            '.gz', '.bz2', '.pdf', '.doc', '.docx'])):
+                    file_paths.append(file_path)
+        
+        # Search in each file
+        for file_path in file_paths:
+            if not file_path.is_file():
+                continue
+                
+            try:
+                # Try to read the file as text
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except (UnicodeDecodeError, PermissionError, OSError):
+                # Skip binary files, permission denied, or other I/O errors
+                continue
+            
+            lines = content.splitlines()
+            file_matches = []
+            
+            # Search for pattern in each line
+            for line_num, line in enumerate(lines, 1):
+                if pattern.search(line):
+                    # Calculate context range
+                    start_line = max(1, line_num - request.context_lines)
+                    end_line = min(len(lines), line_num + request.context_lines)
+                    
+                    # Get context lines
+                    context_lines = []
+                    for ctx_line_num in range(start_line, end_line + 1):
+                        ctx_line = lines[ctx_line_num - 1]  # Convert to 0-based index
+                        if ctx_line_num == line_num:
+                            # Mark the matching line
+                            context_lines.append(f"{ctx_line_num}:>{ctx_line}")
+                        else:
+                            context_lines.append(f"{ctx_line_num}: {ctx_line}")
+                    
+                    file_matches.append({
+                        'line_number': line_num,
+                        'line': line,
+                        'context': context_lines
+                    })
+                    total_matches += 1
+            
+            # Add file results if there were matches
+            if file_matches:
+                display_path = format_path_for_display(file_path)
+                results.append({
+                    'file': display_path,
+                    'matches': file_matches
+                })
+        
+        # Format the results
+        if not results:
+            content = f"No matches found for pattern: '{request.pattern}'"
+            if request.file_pattern:
+                content += f" in files matching: '{request.file_pattern}'"
+        else:
+            formatted_lines = []
+            formatted_lines.append(f"Found {total_matches} matches for pattern: '{request.pattern}'")
+            if request.file_pattern:
+                formatted_lines.append(f"In files matching: '{request.file_pattern}'")
+            formatted_lines.append("")
+            
+            for result in results:
+                formatted_lines.append(f"=== {result['file']} ===")
+                for match in result['matches']:
+                    formatted_lines.extend(match['context'])
+                    formatted_lines.append("")  # Empty line between matches
+            
+            content = "\n".join(formatted_lines)
+        
+        logger.info(f"Grep search completed: {total_matches} matches found")
+        return GrepSearchResponse(content=content)
+        
+    except Exception as e:
+        error_msg = f"Error during grep search: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return GrepSearchResponse(content="", error=error_msg)
 
 def _search_files_impl(request: SearchFilesRequest) -> SearchFilesResponse:
     """
     Internal implementation of search_files tool.
+    
+    Args:
+        request: Validated request with name_query and max_results
+    
+    Returns:
+        Response with JSON-formatted file search results or error information
     """
-    pass # TODO: implement search files tool implementation
+    try:
+        # Get the working directory to search in
+        search_dir = get_working_directory()
+        
+        # Collect all files recursively (excluding hidden files by default)
+        all_files = []
+        for file_path in search_dir.rglob('*'):
+            if (file_path.is_file() and 
+                not file_path.name.startswith('.') and
+                not any(part.startswith('.') for part in file_path.parts)):
+                all_files.append(file_path)
+        
+        # Calculate similarity scores using difflib
+        query = request.name_query.lower()
+        scored_files = []
+        
+        for file_path in all_files:
+            filename = file_path.name.lower()
+            
+            # Calculate different similarity metrics
+            # 1. Exact match gets highest score
+            if filename == query:
+                score = 1.0
+            # 2. Starts with query gets high score
+            elif filename.startswith(query):
+                score = 0.9
+            # 3. Contains query gets medium score
+            elif query in filename:
+                score = 0.8
+            # 4. Use sequence matcher for fuzzy matching
+            else:
+                # Use difflib.SequenceMatcher for similarity scoring
+                matcher = difflib.SequenceMatcher(None, query, filename)
+                score = matcher.ratio()
+                
+                # Also check if query matches any part of the path
+                path_str = str(file_path).lower()
+                if query in path_str:
+                    # Boost score if query appears in full path
+                    score = max(score, 0.7)
+            
+            # Only include files with reasonable similarity
+            if score > 0.1:  # Minimum threshold
+                display_path = format_path_for_display(file_path)
+                scored_files.append({
+                    'path': display_path,
+                    'score': score,
+                    'name': file_path.name
+                })
+        
+        # Sort by score (descending) and limit results
+        scored_files.sort(key=lambda x: x['score'], reverse=True)
+        limited_results = scored_files[:request.max_results]
+        
+        # Format as JSON
+        result_data = {
+            'query': request.name_query,
+            'total_found': len(scored_files),
+            'results_shown': len(limited_results),
+            'files': limited_results
+        }
+        
+        content = json.dumps(result_data, indent=2)
+        
+        logger.info(
+            f"File search completed: {len(limited_results)} results for query '{request.name_query}'"
+        )
+        return SearchFilesResponse(content=content)
+        
+    except Exception as e:
+        error_msg = f"Error during file search: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return SearchFilesResponse(content="", error=error_msg)
 
 
 def _read_file_impl(request: ReadFileRequest) -> ReadFileResponse:
@@ -188,19 +388,65 @@ def _create_file_impl(request: CreateFileRequest) -> CreateFileResponse:
         )
 
 # Raw tool implementations (not rich)
-# TODO: add grep search and search files raw tool implementations
+# Raw tool implementations for grep search and search files
 
 def grep_search_raw(pattern: str, file_pattern: Optional[str] = None, context_lines: int = 3) -> str:
     """
-    Internal implementation of grep_search tool.
+    Search for patterns in files using regex.
+    
+    Args:
+        pattern: Regex pattern or literal string to search for
+        file_pattern: Optional glob pattern to filter files (e.g., '*.py')
+        context_lines: Number of surrounding lines to include (default: 3)
+    
+    Returns:
+        Formatted string with search results or error message
     """
-    pass # TODO: implement grep search raw tool implementation
+    try:
+        request = GrepSearchRequest(
+            pattern=pattern,
+            file_pattern=file_pattern,
+            context_lines=context_lines
+        )
+        response = _grep_search_impl(request)
+        
+        if response.error:
+            return f"Error: {response.error}"
+        
+        return response.content
+        
+    except Exception as e:
+        error_msg = f"Error in grep_search_raw: {str(e)}"
+        logger.error(error_msg)
+        return error_msg
 
 def search_files_raw(name_query: str, max_results: int = 20) -> str:
     """
-    Internal implementation of search_files tool.
+    Search for files by name using fuzzy matching.
+    
+    Args:
+        name_query: Partial or complete filename to search for
+        max_results: Maximum number of results to return (default: 20)
+    
+    Returns:
+        JSON string with file paths and similarity scores or error message
     """
-    pass # TODO: implement search files raw tool implementation
+    try:
+        request = SearchFilesRequest(
+            name_query=name_query,
+            max_results=max_results
+        )
+        response = _search_files_impl(request)
+        
+        if response.error:
+            return f"Error: {response.error}"
+        
+        return response.content
+        
+    except Exception as e:
+        error_msg = f"Error in search_files_raw: {str(e)}"
+        logger.error(error_msg)
+        return error_msg
 
 def read_file_raw(file_path: str) -> str:
     """
@@ -688,6 +934,53 @@ def get_file_info(file_path: str) -> str:
 
 
 @function_tool
+def grep_search(pattern: str, file_pattern: Optional[str] = None, context_lines: int = 3) -> str:
+    """Search for patterns in files using regex.
+    
+    Args:
+        pattern: Regex pattern or literal string to search for
+        file_pattern: Optional glob pattern to filter files (e.g., '*.py')
+        context_lines: Number of surrounding lines to include (default: 3)
+    
+    Returns:
+        Formatted string with search results, showing matching lines with context
+    """
+    capture_args("grep_search", pattern=pattern, file_pattern=file_pattern, context_lines=context_lines)
+    if HOOKS_AVAILABLE:
+        return run_async(
+            _execute_tool_with_hooks(
+                "grep_search",
+                lambda: grep_search_raw(pattern, file_pattern, context_lines),
+                {"pattern": pattern, "file_pattern": file_pattern, "context_lines": context_lines},
+            )
+        )
+    return grep_search_raw(pattern, file_pattern, context_lines)
+
+
+@function_tool
+def search_files(name_query: str, max_results: int = 20) -> str:
+    """Search for files by name using fuzzy matching.
+    
+    Args:
+        name_query: Partial or complete filename to search for
+        max_results: Maximum number of results to return (default: 20)
+    
+    Returns:
+        JSON string with file paths ranked by similarity score
+    """
+    capture_args("search_files", name_query=name_query, max_results=max_results)
+    if HOOKS_AVAILABLE:
+        return run_async(
+            _execute_tool_with_hooks(
+                "search_files",
+                lambda: search_files_raw(name_query, max_results),
+                {"name_query": name_query, "max_results": max_results},
+            )
+        )
+    return search_files_raw(name_query, max_results)
+
+
+@function_tool
 def edit_file(file_path: str, old_str: str, new_str: str) -> str:
     """Edit a file by replacing exact text with new text.
 
@@ -745,7 +1038,7 @@ def get_nano_agent_tools(permissions=None):
     """
     if permissions is None:
         # No restrictions - return all tools
-        return [read_file, write_file, list_directory, get_file_info, edit_file]
+        return [read_file, write_file, list_directory, get_file_info, edit_file, grep_search, search_files]
 
     # Create permission-aware wrapper functions
     tools = []
@@ -757,6 +1050,8 @@ def get_nano_agent_tools(permissions=None):
         "list_directory": list_directory,
         "get_file_info": get_file_info,
         "edit_file": edit_file,
+        "grep_search": grep_search,
+        "search_files": search_files,
     }
 
     for tool_name, tool_func in available_tools.items():
@@ -857,6 +1152,38 @@ def _create_permission_wrapper(tool_name: str, original_tool, permissions):
             return edit_file_raw(file_path, old_str, new_str)
 
         return edit_file_permission_wrapper
+
+    elif tool_name == "grep_search":
+
+        @function_tool
+        def grep_search_permission_wrapper(
+            pattern: str, file_pattern: Optional[str] = None, context_lines: int = 3
+        ) -> str:
+            """Search for patterns in files (with permission checks)."""
+            allowed, reason = permissions.check_tool_permission(
+                "grep_search", {"pattern": pattern}
+            )
+            if not allowed:
+                return f"Permission denied: {reason}"
+            return grep_search_raw(pattern, file_pattern, context_lines)
+
+        return grep_search_permission_wrapper
+
+    elif tool_name == "search_files":
+
+        @function_tool
+        def search_files_permission_wrapper(
+            name_query: str, max_results: int = 20
+        ) -> str:
+            """Search for files by name (with permission checks)."""
+            allowed, reason = permissions.check_tool_permission(
+                "search_files", {"name_query": name_query}
+            )
+            if not allowed:
+                return f"Permission denied: {reason}"
+            return search_files_raw(name_query, max_results)
+
+        return search_files_permission_wrapper
 
     else:
         # Fallback - should not happen
