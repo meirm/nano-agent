@@ -78,6 +78,7 @@ class NanoAgentConfig:
 
     # Session settings
     max_turns: int = 20
+    max_tool_calls: int = 20  # Maximum tool calls per agent run
     session_timeout: int = 1800  # seconds
 
     def to_dict(self) -> Dict[str, Any]:
@@ -250,6 +251,7 @@ class ConfigManager:
             "validate_ssl": True,
             "allow_http": False,
             "max_turns": 20,
+            "max_tool_calls": 20,
             "session_timeout": 1800,
         }
 

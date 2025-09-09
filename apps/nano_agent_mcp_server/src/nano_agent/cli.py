@@ -143,6 +143,12 @@ def run(
     read_only: bool = typer.Option(
         False, "--read-only", help="Disable file system modifications (safe exploration mode)"
     ),
+    max_tool_calls: Optional[int] = typer.Option(
+        None, "--max-tool-calls", help="Maximum number of tool calls allowed (default: 20)"
+    ),
+    unlimited_tool_calls: bool = typer.Option(
+        False, "--unlimited-tool-calls", help="Allow unlimited tool calls (use with caution)"
+    ),
     # Claude-inspired options
     continue_session: bool = typer.Option(
         False, "--continue", "-c", help="Continue the last session"
@@ -312,6 +318,14 @@ def run(
     if format_type == OutputFormat.RICH and verbose:
         get_log_console(verbose).print(f"\n[yellow]Prompt:[/yellow] {final_prompt}\n")
 
+    # Handle tool call limits
+    if unlimited_tool_calls:
+        max_tool_calls_value = -1
+    elif max_tool_calls is not None:
+        max_tool_calls_value = max_tool_calls
+    else:
+        max_tool_calls_value = None  # Use default
+
     # Create request with the final prompt (either direct or from command)
     request = PromptNanoAgentRequest(
         agentic_prompt=final_prompt,
@@ -325,6 +339,7 @@ def run(
         max_tokens=max_tokens if max_tokens is not None else MAX_TOKENS,
         enable_trace=enable_trace,
         read_only=read_only,
+        max_tool_calls=max_tool_calls_value,
     )
 
     # Disable rich logging for simple/json formats

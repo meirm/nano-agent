@@ -491,11 +491,20 @@ async def _execute_nano_agent_async(
             full_prompt = request.agentic_prompt
             has_history = "false"  # Use string for trace metadata
 
+        # Determine max turns
+        if request.max_tool_calls is not None:
+            if request.max_tool_calls == -1:
+                max_turns = 999  # Effectively unlimited
+            else:
+                max_turns = request.max_tool_calls
+        else:
+            max_turns = MAX_AGENT_TURNS
+
         # Run the agent asynchronously
         result = await Runner.run(
             agent,
             full_prompt,
-            max_turns=MAX_AGENT_TURNS,
+            max_turns=max_turns,
             run_config=RunConfig(
                 workflow_name="nano_agent_task",
                 trace_metadata={
@@ -567,13 +576,51 @@ async def _execute_nano_agent_async(
         )
 
     except Exception as e:
+        execution_time = time.time() - start_time
+        
+        # Handle MaxTurnsExceeded specifically
+        if "Max turns" in str(e) or "MaxTurnsExceeded" in type(e).__name__:
+            error_msg = f"Maximum tool calls ({max_turns}) reached. The agent needs more iterations to complete the task."
+            logger.info(f"Agent reached max tool calls limit: {max_turns}")
+            
+            # Trigger agent error hook if available
+            if HOOKS_AVAILABLE:
+                try:
+                    hook_manager = get_hook_manager()
+                    event_data = HookEventData(
+                        event="agent_error",
+                        timestamp=datetime.now().isoformat(),
+                        context=hook_manager.context,
+                        working_dir=os.getcwd(),
+                        model=request.model,
+                        provider=request.provider,
+                        prompt=request.agentic_prompt,
+                        error=error_msg,
+                        execution_time=execution_time,
+                    )
+                    await hook_manager.trigger_hook(HookEvent.AGENT_ERROR, event_data)
+                except Exception as hook_error:
+                    logger.warning(f"Error in agent error hook: {hook_error}")
+            
+            return PromptNanoAgentResponse(
+                success=False,
+                error=error_msg,
+                metadata={
+                    "error_type": "MaxToolCallsReached",
+                    "max_tool_calls": max_turns,
+                    "model": request.model,
+                    "provider": request.provider,
+                    "agent_sdk": True,
+                },
+                execution_time_seconds=execution_time,
+            )
+        
+        # Generic error handling
         import traceback
-
         full_traceback = traceback.format_exc()
         logger.error(
             f"Agent SDK execution failed: {str(e)}\nFull traceback:\n{full_traceback}"
         )
-        execution_time = time.time() - start_time
 
         # Trigger agent error hook if available
         if HOOKS_AVAILABLE:
@@ -749,11 +796,20 @@ def _execute_nano_agent(
             full_prompt = request.agentic_prompt
             has_history = "false"  # Use string for trace metadata
 
+        # Determine max turns
+        if request.max_tool_calls is not None:
+            if request.max_tool_calls == -1:
+                max_turns = 999  # Effectively unlimited
+            else:
+                max_turns = request.max_tool_calls
+        else:
+            max_turns = MAX_AGENT_TURNS
+        
         try:
             result = Runner.run_sync(
                 agent,
                 full_prompt,
-                max_turns=MAX_AGENT_TURNS,
+                max_turns=max_turns,
                 run_config=RunConfig(
                     workflow_name="nano_agent_task",
                     trace_metadata={
@@ -772,7 +828,7 @@ def _execute_nano_agent(
                     return await Runner.run(
                         agent,
                         full_prompt,  # Use the full prompt with context
-                        max_turns=MAX_AGENT_TURNS,
+                        max_turns=max_turns,
                         run_config=RunConfig(
                             workflow_name="nano_agent_task",
                             trace_metadata={
@@ -836,6 +892,26 @@ def _execute_nano_agent(
 
     except Exception as e:
         execution_time = time.time() - start_time
+        
+        # Handle MaxTurnsExceeded specifically
+        if "Max turns" in str(e) or "MaxTurnsExceeded" in type(e).__name__:
+            error_msg = f"Maximum tool calls ({max_turns}) reached. The agent needs more iterations to complete the task."
+            logger.info(f"Agent reached max tool calls limit: {max_turns}")
+            
+            return PromptNanoAgentResponse(
+                success=False,
+                error=error_msg,
+                metadata={
+                    "error_type": "MaxToolCallsReached",
+                    "max_tool_calls": max_turns,
+                    "model": request.model,
+                    "provider": request.provider,
+                    "agent_sdk": True,
+                },
+                execution_time_seconds=execution_time,
+            )
+        
+        # Generic error handling
         error_msg = f"Agent SDK execution failed: {str(e)}"
         logger.error(error_msg, exc_info=True)
 

@@ -157,7 +157,27 @@ class ToolPermissions(BaseModel):
 
 
 # MCP Tool Request/Response Models
+# TODO: add grep search and search files request/response models
+class GrepSearchRequest(BaseModel):
+    """Request model for grep_search agent tool."""
+    pattern: str = Field(..., description="Regex pattern or literal string to search for")
+    file_pattern: Optional[str] = Field(default=None, description="Glob pattern to filter files (e.g., '*.py')")
+    context_lines: int = Field(default=3, description="Number of surrounding lines to include")
 
+class GrepSearchResponse(BaseModel):
+    """Response model for grep_search agent tool."""
+    content: str = Field(..., description="Formatted text with matching lines, file paths, and line numbers")
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+
+class SearchFilesRequest(BaseModel):
+    """Request model for search_files agent tool."""
+    name_query: str = Field(..., description="Partial or complete filename to search for")
+    max_results: int = Field(default=20, description="Maximum number of results to return")
+
+class SearchFilesResponse(BaseModel):
+    """Response model for search_files agent tool."""
+    content: str = Field(..., description="JSON string with file paths ranked by fuzzy matching score")
+    error: Optional[str] = Field(default=None, description="Error message if failed")
 
 class ChatMessage(BaseModel):
     """A single message in a chat conversation."""
@@ -224,6 +244,10 @@ class PromptNanoAgentRequest(BaseModel):
     enable_trace: bool = Field(
         default=False,
         description="If True, enable OpenAI agent tracing (requires OPENAI_API_KEY)",
+    )
+    max_tool_calls: Optional[int] = Field(
+        default=None,
+        description="Maximum number of tool calls allowed (None for default, -1 for unlimited)",
     )
 
 

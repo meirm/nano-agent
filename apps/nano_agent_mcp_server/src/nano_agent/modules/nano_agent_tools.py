@@ -12,6 +12,7 @@ import logging
 import os
 from datetime import datetime
 from typing import Any, Dict, Optional
+# TODO: add grep search tool and search files tool
 
 # Import function_tool decorator from agents SDK
 try:
@@ -37,12 +38,24 @@ from .constants import (ERROR_DIR_NOT_FOUND, ERROR_FILE_NOT_FOUND,
                         ERROR_NOT_A_DIR, ERROR_NOT_A_FILE, SUCCESS_FILE_EDIT,
                         SUCCESS_FILE_WRITE)
 from .data_types import (CreateFileRequest, CreateFileResponse,
-                         ReadFileRequest, ReadFileResponse)
+                         ReadFileRequest, ReadFileResponse, GrepSearchRequest, GrepSearchResponse, SearchFilesRequest, SearchFilesResponse)
 from .files import (ensure_parent_exists, format_path_for_display,
                     get_working_directory, resolve_path)
 
 # Initialize logger
 logger = logging.getLogger(__name__)
+
+def _grep_search_impl(request: GrepSearchRequest) -> GrepSearchResponse:
+    """
+    Internal implementation of grep_search tool.
+    """
+    pass # TODO: implement grep search tool implementation
+
+def _search_files_impl(request: SearchFilesRequest) -> SearchFilesResponse:
+    """
+    Internal implementation of search_files tool.
+    """
+    pass # TODO: implement search files tool implementation
 
 
 def _read_file_impl(request: ReadFileRequest) -> ReadFileResponse:
@@ -174,8 +187,21 @@ def _create_file_impl(request: CreateFileRequest) -> CreateFileResponse:
             error=f"Unexpected error: {str(e)}",
         )
 
-
 # Raw tool implementations (not rich)
+# TODO: add grep search and search files raw tool implementations
+
+def grep_search_raw(pattern: str, file_pattern: Optional[str] = None, context_lines: int = 3) -> str:
+    """
+    Internal implementation of grep_search tool.
+    """
+    pass # TODO: implement grep search raw tool implementation
+
+def search_files_raw(name_query: str, max_results: int = 20) -> str:
+    """
+    Internal implementation of search_files tool.
+    """
+    pass # TODO: implement search files raw tool implementation
+
 def read_file_raw(file_path: str) -> str:
     """
     Read the contents of a file.
@@ -839,3 +865,4 @@ def _create_permission_wrapper(tool_name: str, original_tool, permissions):
             return f"Error: Unknown tool '{tool_name}'"
 
         return unknown_tool_wrapper
+

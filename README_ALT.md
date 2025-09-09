@@ -12,7 +12,8 @@ Nano Agent is a production-ready MCP (Model Context Protocol) server that provid
 
 - **🚀 Production Ready**: Not a POC - battle-tested with real workloads
 - **🔐 Enterprise Security**: Fine-grained permissions, path restrictions, read-only mode
-- **🤖 Multi-Provider**: One interface for OpenAI, Anthropic, Ollama, and more
+- **🤖 Unlimited Models**: Use ANY model from ANY provider - no hardcoded restrictions
+- **⚙️ Flexible Configuration**: YAML-based config for custom providers and endpoints
 - **💬 Stateful Sessions**: Persistent conversations with context preservation
 - **📦 5-Minute Setup**: Install and integrate with Claude Desktop instantly
 - **🎯 Task Delegation**: HOP/LOP system for complex multi-agent workflows
@@ -41,11 +42,17 @@ Use nano-agent in read-only mode to audit security vulnerabilities
 
 **Via CLI**:
 ```bash
-# Quick test
+# Quick test with any model
 nano-cli run "Create a hello world script" --model gpt-5-mini
 
-# Safe exploration
+# Safe exploration with read-only mode
 nano-cli run "Analyze this codebase" --read-only
+
+# Use ANY model from ANY provider
+nano-cli run "Write a function" --model llama3.2:latest --provider ollama
+
+# List available models
+nano-cli list-models --provider ollama
 
 # Continue conversation
 nano-cli run "Add error handling to that function" --continue
@@ -53,21 +60,29 @@ nano-cli run "Add error handling to that function" --continue
 
 ## Core Features
 
-### 🤖 Multi-Provider Support
+### 🤖 Flexible Multi-Provider Support
 
-Seamlessly switch between providers with consistent behavior:
+**Use ANY model from ANY provider** - no hardcoded restrictions:
 
-| Provider | Models | Use Case |
-|----------|--------|----------|
-| **OpenAI** | GPT-5 (Nano, Mini, Standard), GPT-4o | Cloud-based, high performance |
-| **Anthropic** | Claude Opus 4.1, Sonnet 4, Haiku 3 | Advanced reasoning, cost-effective |
-| **Ollama** | GPT-OSS (20B, 120B), custom models | Local, zero-cost, privacy-first |
+| Provider | Example Models | Configuration |
+|----------|---------------|---------------|
+| **OpenAI** | GPT-5, GPT-4o, or any model | API key required |
+| **Anthropic** | Claude models or any via API | API key required |
+| **Ollama** | Any local model you've pulled | No API key needed |
+| **Custom** | Your own endpoints | Fully configurable |
 
 ```bash
-# Use any provider with the same interface
+# Use well-known models
 nano-cli run "Analyze code" --model gpt-5 --provider openai
 nano-cli run "Analyze code" --model claude-3-haiku --provider anthropic  
-nano-cli run "Analyze code" --model gpt-oss:20b --provider ollama
+
+# Use ANY Ollama model - not limited to a predefined list
+nano-cli run "Analyze code" --model llama3.2:latest --provider ollama
+nano-cli run "Analyze code" --model mistral:7b --provider ollama
+nano-cli run "Analyze code" --model qwen2.5-coder:3b --provider ollama
+
+# Configure custom providers in ~/.config/nano-cli/config.yaml
+nano-cli run "Analyze code" --model custom-model --provider my-provider
 ```
 
 ### 🔐 Enterprise Security
@@ -85,6 +100,8 @@ result = await prompt_nano_agent(
 ```
 
 **Read-Only Mode for Safe Exploration**
+
+Via MCP (Claude Desktop):
 ```python
 # Analyze without any risk of modification
 result = await prompt_nano_agent_readonly(
@@ -93,6 +110,49 @@ result = await prompt_nano_agent_readonly(
 # ✅ Can read files, analyze code, generate reports
 # ❌ Cannot modify, create, or delete anything
 ```
+
+Via CLI:
+```bash
+# Safe exploration with --read-only flag
+nano-cli run "Audit the codebase for vulnerabilities" --read-only
+nano-cli run "Analyze architecture and create documentation" --read-only
+
+# The agent will only have access to:
+# ✅ read_file, list_directory, get_file_info
+# ❌ write_file and edit_file are blocked
+```
+
+### 🔧 Intelligent Tool Call Management
+
+**Control agent iterations with precision** - prevent runaway operations or extend limits for complex tasks:
+
+**CLI Control**
+```bash
+# Limit tool calls for safety
+nano-cli run "Analyze project" --max-tool-calls 10
+
+# Allow unlimited calls for complex operations
+nano-cli run "Refactor entire codebase" --unlimited-tool-calls
+
+# Default is 20 tool calls
+nano-cli run "Normal task"  # Uses default limit
+```
+
+**Configuration**
+```yaml
+# ~/.config/nano-cli/config.yaml
+max_tool_calls: 30  # Increase default limit
+```
+
+**Smart Error Handling**
+- Clean error messages when limits are reached
+- No stack traces exposed to users
+- Helpful feedback: "Maximum tool calls (20) reached. The agent needs more iterations to complete the task."
+
+**Use Cases**
+- **Safety**: Limit operations when testing or exploring
+- **Complex Tasks**: Remove limits for large refactoring or analysis
+- **Resource Control**: Prevent excessive API calls and costs
 
 ### 💬 Session Management
 
@@ -336,6 +396,58 @@ ollama pull gpt-oss:20b
 # No API key needed!
 ```
 
+## Flexible Configuration
+
+Nano Agent uses a hierarchical configuration system that allows complete customization:
+
+### Configuration File
+
+Create `~/.config/nano-cli/config.yaml`:
+
+```yaml
+# Default settings
+default_provider: ollama
+default_model: llama3.2:latest
+
+providers:
+  # Configure Ollama with any models
+  ollama:
+    api_base: http://localhost:11434/v1
+    allow_unknown_models: true  # Accept ANY model name
+    
+  # Add custom provider endpoints
+  my_provider:
+    api_base: https://my-llm-api.com/v1
+    api_key_env: MY_PROVIDER_KEY
+    allow_unknown_models: true
+    known_models: ["model1", "model2"]  # Optional validation
+    
+  # Configure OpenAI-compatible APIs
+  openrouter:
+    api_base: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    allow_unknown_models: true
+
+# Model aliases for convenience
+model_aliases:
+  llama: llama3.2:latest
+  qwen: qwen2.5-coder:3b
+  gpt5: gpt-5-mini
+```
+
+### Using Custom Configurations
+
+```bash
+# Use any configured provider
+nano-cli run "Task" --provider my_provider --model custom-model
+
+# Models not in known_models still work if allow_unknown_models: true
+nano-cli run "Task" --provider ollama --model any-model-name:tag
+
+# Use aliases for convenience
+nano-cli run "Task" --model llama  # Resolves to llama3.2:latest
+```
+
 ## API Reference
 
 ### MCP Tools
@@ -353,6 +465,11 @@ ollama pull gpt-oss:20b
 
 ```bash
 nano-cli run <prompt>           # Run agent with prompt
+nano-cli run <prompt> --read-only  # Safe exploration mode
+nano-cli run <prompt> --max-tool-calls 10  # Limit tool calls
+nano-cli run <prompt> --unlimited-tool-calls  # No limit on tool calls
+nano-cli list-models            # List all available models
+nano-cli list-models --provider <name>  # List models for provider
 nano-cli interactive            # Start interactive mode
 nano-cli sessions list          # List sessions
 nano-cli sessions show <id>     # Show session details
