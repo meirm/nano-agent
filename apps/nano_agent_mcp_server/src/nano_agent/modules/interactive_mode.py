@@ -448,6 +448,7 @@ class InteractiveSession:
         if cmd in ["exit", "quit", "q", "/exit", "/quit"]:
             # Ensure terminal is in proper state before printing
             import sys
+            sys.stdout.write('\033[0m')  # Reset all attributes
             sys.stdout.flush()
             console.print("[dim]Goodbye![/dim]")
             # Return a special value to signal exit
@@ -939,12 +940,12 @@ class InteractiveSession:
                         Panel(error, title="❌ Error", border_style="red", expand=False)
                     )
 
-                    if self.verbose and response_dict.get("metadata"):
+                    if self.verbose and hasattr(response, 'metadata') and response.metadata:
                         import json
 
                         console.print(
                             Panel(
-                                json.dumps(response_dict["metadata"], indent=2),
+                                json.dumps(response.metadata, indent=2),
                                 title="🔍 Error Details",
                                 border_style="dim",
                                 expand=False,
@@ -958,9 +959,12 @@ class InteractiveSession:
                 continue
             except EOFError:
                 # Handle Ctrl+D
-                # Small delay to let prompt_toolkit clean up
+                # Ensure terminal is properly reset
+                import sys
                 import time
-                time.sleep(0.01)
+                sys.stdout.write('\033[0m')  # Reset all attributes
+                sys.stdout.flush()
+                time.sleep(0.01)  # Small delay to let prompt_toolkit clean up
                 console.print("\n[dim]Goodbye![/dim]")
                 break
             except Exception as e:
