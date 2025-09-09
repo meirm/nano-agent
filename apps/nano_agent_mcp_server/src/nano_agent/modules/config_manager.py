@@ -149,7 +149,7 @@ class ConfigManager:
         self.app_name = app_name
         # Only set config paths for nano-cli
         if app_name == "nano-cli":
-            self.user_config_dir = Path.home() / ".config" / "nano-cli"
+            self.user_config_dir = Path.home() / ".nano-cli"
             self.user_config_path = self.user_config_dir / "config.yaml"
         else:
             self.user_config_dir = None

@@ -12,6 +12,8 @@ import json
 import logging
 import os
 import re
+import subprocess
+import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -39,7 +41,8 @@ from .constants import (ERROR_DIR_NOT_FOUND, ERROR_FILE_NOT_FOUND,
                         ERROR_NOT_A_DIR, ERROR_NOT_A_FILE, SUCCESS_FILE_EDIT,
                         SUCCESS_FILE_WRITE)
 from .data_types import (CreateFileRequest, CreateFileResponse,
-                         ReadFileRequest, ReadFileResponse, GrepSearchRequest, GrepSearchResponse, SearchFilesRequest, SearchFilesResponse)
+                         ReadFileRequest, ReadFileResponse, GrepSearchRequest, GrepSearchResponse, 
+                         SearchFilesRequest, SearchFilesResponse, BashCommandRequest, BashCommandResponse)
 from .files import (ensure_parent_exists, format_path_for_display,
                     get_working_directory, resolve_path)
 
@@ -258,6 +261,159 @@ def _search_files_impl(request: SearchFilesRequest) -> SearchFilesResponse:
         return SearchFilesResponse(content="", error=error_msg)
 
 
+def _bash_command_impl(request: BashCommandRequest) -> BashCommandResponse:
+    """
+    Internal implementation of bash_command tool.
+    
+    Executes shell commands with full control over stdin, stdout, and stderr.
+    
+    Args:
+        request: Validated request with command and execution parameters
+        
+    Returns:
+        Response with command output, error streams, and exit code
+    """
+    start_time = time.time()
+    
+    try:
+        # Resolve working directory if provided
+        working_dir = None
+        if request.working_dir:
+            working_dir_path = resolve_path(request.working_dir)
+            if not working_dir_path.exists():
+                error_msg = f"Working directory not found: {request.working_dir}"
+                logger.warning(error_msg)
+                return BashCommandResponse(
+                    stdout="",
+                    stderr=error_msg,
+                    return_code=1,
+                    success=False,
+                    error=error_msg,
+                    execution_time=time.time() - start_time
+                )
+            if not working_dir_path.is_dir():
+                error_msg = f"Path is not a directory: {request.working_dir}"
+                logger.warning(error_msg)
+                return BashCommandResponse(
+                    stdout="",
+                    stderr=error_msg,
+                    return_code=1,
+                    success=False,
+                    error=error_msg,
+                    execution_time=time.time() - start_time
+                )
+            working_dir = str(working_dir_path.absolute())
+        else:
+            working_dir = str(get_working_directory())
+        
+        # Prepare environment variables
+        env = os.environ.copy()
+        if request.env:
+            env.update(request.env)
+        
+        # Log command execution
+        logger.info(f"Executing command: {request.command[:100]}... in {working_dir}")
+        
+        # Execute the command
+        try:
+            result = subprocess.run(
+                request.command if request.shell else request.command.split(),
+                input=request.stdin,
+                capture_output=True,
+                text=True,
+                shell=request.shell,
+                cwd=working_dir,
+                env=env,
+                timeout=request.timeout
+            )
+            
+            execution_time = time.time() - start_time
+            
+            logger.info(
+                f"Command completed with exit code {result.returncode} in {execution_time:.2f}s"
+            )
+            
+            return BashCommandResponse(
+                stdout=result.stdout,
+                stderr=result.stderr,
+                return_code=result.returncode,
+                success=(result.returncode == 0),
+                error=None if result.returncode == 0 else f"Command exited with code {result.returncode}",
+                execution_time=execution_time
+            )
+            
+        except subprocess.TimeoutExpired as e:
+            execution_time = time.time() - start_time
+            error_msg = f"Command timed out after {request.timeout} seconds"
+            logger.warning(error_msg)
+            
+            # Try to get partial output if available
+            stdout = e.stdout.decode('utf-8', errors='replace') if e.stdout else ""
+            stderr = e.stderr.decode('utf-8', errors='replace') if e.stderr else ""
+            
+            return BashCommandResponse(
+                stdout=stdout,
+                stderr=stderr + f"\n{error_msg}",
+                return_code=-1,
+                success=False,
+                error=error_msg,
+                execution_time=execution_time
+            )
+            
+        except subprocess.CalledProcessError as e:
+            execution_time = time.time() - start_time
+            error_msg = f"Command failed: {str(e)}"
+            logger.error(error_msg)
+            
+            return BashCommandResponse(
+                stdout=e.stdout if e.stdout else "",
+                stderr=e.stderr if e.stderr else str(e),
+                return_code=e.returncode,
+                success=False,
+                error=error_msg,
+                execution_time=execution_time
+            )
+            
+    except PermissionError as e:
+        execution_time = time.time() - start_time
+        error_msg = f"Permission denied: {str(e)}"
+        logger.error(error_msg)
+        return BashCommandResponse(
+            stdout="",
+            stderr=error_msg,
+            return_code=126,  # Standard code for permission denied
+            success=False,
+            error=error_msg,
+            execution_time=execution_time
+        )
+        
+    except FileNotFoundError as e:
+        execution_time = time.time() - start_time
+        error_msg = f"Command not found: {request.command.split()[0] if not request.shell else request.command}"
+        logger.error(error_msg)
+        return BashCommandResponse(
+            stdout="",
+            stderr=error_msg,
+            return_code=127,  # Standard code for command not found
+            success=False,
+            error=error_msg,
+            execution_time=execution_time
+        )
+        
+    except Exception as e:
+        execution_time = time.time() - start_time
+        error_msg = f"Unexpected error executing command: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return BashCommandResponse(
+            stdout="",
+            stderr=error_msg,
+            return_code=-1,
+            success=False,
+            error=error_msg,
+            execution_time=execution_time
+        )
+
+
 def _read_file_impl(request: ReadFileRequest) -> ReadFileResponse:
     """
     Internal implementation of read_file tool.
@@ -447,6 +603,63 @@ def search_files_raw(name_query: str, max_results: int = 20) -> str:
         error_msg = f"Error in search_files_raw: {str(e)}"
         logger.error(error_msg)
         return error_msg
+
+
+def bash_command_raw(
+    command: str,
+    stdin: Optional[str] = None,
+    working_dir: Optional[str] = None,
+    timeout: int = 30,
+    shell: bool = True,
+    env: Optional[Dict[str, str]] = None
+) -> str:
+    """
+    Execute a shell command with control over stdin, stdout, and stderr.
+    
+    Args:
+        command: Shell command to execute
+        stdin: Optional input to provide to stdin
+        working_dir: Optional working directory for command execution
+        timeout: Timeout in seconds (default: 30)
+        shell: Whether to run command through shell (default: True)
+        env: Optional environment variables to set
+        
+    Returns:
+        Formatted string with command output, stderr, and exit code
+    """
+    try:
+        request = BashCommandRequest(
+            command=command,
+            stdin=stdin,
+            working_dir=working_dir,
+            timeout=timeout,
+            shell=shell,
+            env=env
+        )
+        response = _bash_command_impl(request)
+        
+        # Format the response for display
+        result = []
+        
+        if response.stdout:
+            result.append(f"=== STDOUT ===\n{response.stdout}")
+        
+        if response.stderr:
+            result.append(f"=== STDERR ===\n{response.stderr}")
+        
+        result.append(f"=== EXIT CODE: {response.return_code} ===")
+        result.append(f"=== EXECUTION TIME: {response.execution_time:.2f}s ===")
+        
+        if response.error:
+            result.append(f"=== ERROR: {response.error} ===")
+        
+        return "\n".join(result)
+        
+    except Exception as e:
+        error_msg = f"Error in bash_command_raw: {str(e)}"
+        logger.error(error_msg)
+        return f"=== ERROR ===\n{error_msg}"
+
 
 def read_file_raw(file_path: str) -> str:
     """
@@ -980,6 +1193,63 @@ def search_files(name_query: str, max_results: int = 20) -> str:
     return search_files_raw(name_query, max_results)
 
 
+@function_tool(strict_mode=False)
+def bash_command(
+    command: str,
+    stdin: Optional[str] = None,
+    working_dir: Optional[str] = None,
+    timeout: int = 30,
+    shell: bool = True,
+    env: Optional[Dict[str, str]] = None
+) -> str:
+    """Execute a shell command with control over stdin, stdout, and stderr.
+    
+    IMPORTANT: This tool executes system commands and can modify the system state.
+    
+    Args:
+        command: The shell command to execute
+        stdin: Optional input to provide to the command's stdin
+        working_dir: Directory to execute the command in (defaults to current directory)
+        timeout: Maximum seconds to wait for command completion (default: 30)
+        shell: Whether to run command through shell (default: True)
+        env: Optional environment variables to set for the command
+        
+    Returns:
+        Formatted output containing:
+        - STDOUT: Standard output from the command
+        - STDERR: Standard error output
+        - EXIT CODE: Command exit code (0 = success)
+        - EXECUTION TIME: How long the command took
+        - ERROR: Any error message if command failed
+        
+    Examples:
+        # Simple command
+        bash_command("ls -la")
+        
+        # Command with stdin
+        bash_command("cat > file.txt", stdin="Hello World")
+        
+        # Command with custom working directory
+        bash_command("npm install", working_dir="/path/to/project")
+        
+        # Command with environment variables
+        bash_command("echo $MY_VAR", env={"MY_VAR": "value"})
+        bash_command("echo $A $B", env={"A": "hello", "B": "world"})
+    """
+    capture_args("bash_command", command=command, stdin=stdin, working_dir=working_dir,
+                 timeout=timeout, shell=shell, env=env)
+    if HOOKS_AVAILABLE:
+        return run_async(
+            _execute_tool_with_hooks(
+                "bash_command",
+                lambda: bash_command_raw(command, stdin, working_dir, timeout, shell, env),
+                {"command": command, "stdin": stdin, "working_dir": working_dir,
+                 "timeout": timeout, "shell": shell, "env": env}
+            )
+        )
+    return bash_command_raw(command, stdin, working_dir, timeout, shell, env)
+
+
 @function_tool
 def edit_file(file_path: str, old_str: str, new_str: str) -> str:
     """Edit a file by replacing exact text with new text.
@@ -1038,7 +1308,7 @@ def get_nano_agent_tools(permissions=None):
     """
     if permissions is None:
         # No restrictions - return all tools
-        return [read_file, write_file, list_directory, get_file_info, edit_file, grep_search, search_files]
+        return [read_file, write_file, list_directory, get_file_info, edit_file, grep_search, search_files, bash_command]
 
     # Create permission-aware wrapper functions
     tools = []
@@ -1052,6 +1322,7 @@ def get_nano_agent_tools(permissions=None):
         "edit_file": edit_file,
         "grep_search": grep_search,
         "search_files": search_files,
+        "bash_command": bash_command,
     }
 
     for tool_name, tool_func in available_tools.items():
@@ -1184,6 +1455,27 @@ def _create_permission_wrapper(tool_name: str, original_tool, permissions):
             return search_files_raw(name_query, max_results)
 
         return search_files_permission_wrapper
+
+    elif tool_name == "bash_command":
+
+        @function_tool(strict_mode=False)
+        def bash_command_permission_wrapper(
+            command: str,
+            stdin: Optional[str] = None,
+            working_dir: Optional[str] = None,
+            timeout: int = 30,
+            shell: bool = True,
+            env: Optional[Dict[str, str]] = None
+        ) -> str:
+            """Execute a shell command (with permission checks)."""
+            allowed, reason = permissions.check_tool_permission(
+                "bash_command", {"command": command, "working_dir": working_dir}
+            )
+            if not allowed:
+                return f"Permission denied: {reason}"
+            return bash_command_raw(command, stdin, working_dir, timeout, shell, env)
+
+        return bash_command_permission_wrapper
 
     else:
         # Fallback - should not happen

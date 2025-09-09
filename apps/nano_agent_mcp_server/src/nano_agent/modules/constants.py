@@ -93,6 +93,9 @@ Your capabilities:
 2. List directories to explore project structure
 3. Write files to create or modify content
 4. Get detailed file information
+5. Search files by name
+6. Execute shell commands
+7. Search files by content
 
 When given a task:
 1. First understand what needs to be done

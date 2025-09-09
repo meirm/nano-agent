@@ -114,16 +114,90 @@ function Install-NanoAgent {
 function Setup-Configuration {
     Write-Step "Setting up configuration..."
     
-    # Create default config
-    $config = @{
-        default_model = "gpt-oss:20b"
-        default_provider = "ollama"
-        default_temperature = 0.7
-        default_max_tokens = 4000
-    } | ConvertTo-Json -Depth 3
+    $configPath = "$ConfigDir\config.yaml"
+    $packageConfigPath = "$ConfigDir\config.yaml.package"
     
-    $config | Out-File -FilePath "$ConfigDir\config.json" -Encoding UTF8
-    Write-Success "Configuration created at $ConfigDir\config.json"
+    # Sample configuration content
+    $sampleConfig = @'
+# Nano CLI Configuration
+# This is a sample configuration file for nano-cli
+
+# Default provider and model settings
+default_provider: openai
+default_model: gpt-5-mini
+
+# Provider configurations
+providers:
+  openai:
+    api_key_env: OPENAI_API_KEY
+    known_models:
+      - gpt-5-nano
+      - gpt-5-mini
+      - gpt-5
+      - gpt-4o
+    allow_unknown_models: true
+    
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    api_base: https://api.anthropic.com/v1
+    known_models:
+      - claude-3-haiku-20240307
+      - claude-opus-4-20250514
+      - claude-opus-4-1-20250805
+      - claude-sonnet-4-20250514
+    allow_unknown_models: true
+    
+  ollama:
+    api_base: http://localhost:11434/v1
+    known_models:
+      - gpt-oss:20b
+      - gpt-oss:120b
+      - qwen2.5-coder:3b
+      - llama3.2:3b
+      - mistral-small3.2
+    allow_unknown_models: true
+    discover_models: true
+
+# Agent configuration
+max_tool_calls: 20
+max_turns: 20
+session_timeout: 1800
+
+# Model aliases for convenience
+model_aliases:
+  gpt5: gpt-5
+  gpt5mini: gpt-5-mini
+  gpt5nano: gpt-5-nano
+  claude3haiku: claude-3-haiku-20240307
+  opus4: claude-opus-4-20250514
+  opus41: claude-opus-4-1-20250805
+  sonnet4: claude-sonnet-4-20250514
+  qwen: qwen2.5-coder:3b
+  llama: llama3.2:3b
+  mistral: mistral-small3.2
+
+# Logging configuration
+log_level: INFO
+
+# Performance settings
+cache_enabled: true
+cache_ttl: 3600
+
+# Security settings
+validate_ssl: true
+allow_http: false
+'@
+    
+    if (Test-Path $configPath) {
+        Write-Host "ℹ️  Existing configuration found at $configPath" -ForegroundColor Blue
+        # Save sample config as .package file for reference
+        $sampleConfig | Out-File -FilePath $packageConfigPath -Encoding UTF8
+        Write-Host "ℹ️  Sample configuration saved to $packageConfigPath for reference" -ForegroundColor Blue
+    } else {
+        # Create new configuration
+        $sampleConfig | Out-File -FilePath $configPath -Encoding UTF8
+        Write-Success "Configuration created at $configPath"
+    }
 }
 
 function Show-ClaudeDesktopInstructions {

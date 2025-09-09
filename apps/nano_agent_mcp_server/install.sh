@@ -33,6 +33,10 @@ print_success() {
     echo -e "${GREEN}✅${NC} $1"
 }
 
+print_info() {
+    echo -e "${BLUE}ℹ️${NC}  $1"
+}
+
 print_warning() {
     echo -e "${YELLOW}⚠️${NC}  $1"
 }
@@ -173,17 +177,180 @@ setup_configuration() {
     # Create config directory
     mkdir -p "$CONFIG_DIR"
     
-    # Create default configuration
-    cat > "$CONFIG_DIR/config.json" << EOF
-{
-  "default_model": "gpt-oss:20b",
-  "default_provider": "ollama",
-  "default_temperature": 0.7,
-  "default_max_tokens": 4000
-}
-EOF
+    # Check if config.yaml already exists
+    if [ -f "$CONFIG_DIR/config.yaml" ]; then
+        print_info "Existing configuration found at $CONFIG_DIR/config.yaml"
+        
+        # Copy sample config to .package file for reference
+        if [ -n "$INSTALL_FROM_LOCAL" ]; then
+            # Installing from local repository
+            if [ -f "./config/sample_config.yaml" ]; then
+                cp "./config/sample_config.yaml" "$CONFIG_DIR/config.yaml.package"
+                print_info "Sample configuration saved to $CONFIG_DIR/config.yaml.package for reference"
+            fi
+        else
+            # Installing from internet - create sample config
+            cat > "$CONFIG_DIR/config.yaml.package" << 'EOF'
+# Nano CLI Configuration
+# This is a sample configuration file for nano-cli
+# Copy this file to ~/.nano-cli/config.yaml and customize as needed
+
+# Default provider and model settings
+default_provider: openai
+default_model: gpt-5-mini
+
+# Provider configurations
+providers:
+  openai:
+    api_key_env: OPENAI_API_KEY
+    known_models:
+      - gpt-5-nano
+      - gpt-5-mini
+      - gpt-5
+      - gpt-4o
+    allow_unknown_models: true
     
-    print_success "Default configuration created at $CONFIG_DIR/config.json"
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    api_base: https://api.anthropic.com/v1
+    known_models:
+      - claude-3-haiku-20240307
+      - claude-opus-4-20250514
+      - claude-opus-4-1-20250805
+      - claude-sonnet-4-20250514
+    allow_unknown_models: true
+    
+  ollama:
+    api_base: http://localhost:11434/v1
+    known_models:
+      - gpt-oss:20b
+      - gpt-oss:120b
+      - qwen2.5-coder:3b
+      - llama3.2:3b
+      - mistral-small3.2
+    allow_unknown_models: true
+    discover_models: true
+
+# Agent configuration
+max_tool_calls: 20  # Maximum tool calls per agent run
+max_turns: 20       # Maximum conversation turns
+session_timeout: 1800  # Session timeout in seconds
+
+# Model aliases for convenience
+model_aliases:
+  gpt5: gpt-5
+  gpt5mini: gpt-5-mini
+  gpt5nano: gpt-5-nano
+  claude3haiku: claude-3-haiku-20240307
+  opus4: claude-opus-4-20250514
+  opus41: claude-opus-4-1-20250805
+  sonnet4: claude-sonnet-4-20250514
+  qwen: qwen2.5-coder:3b
+  llama: llama3.2:3b
+  mistral: mistral-small3.2
+
+# Logging configuration
+log_level: INFO
+
+# Performance settings
+cache_enabled: true
+cache_ttl: 3600
+
+# Security settings
+validate_ssl: true
+allow_http: false
+EOF
+            print_info "Sample configuration saved to $CONFIG_DIR/config.yaml.package for reference"
+        fi
+    else
+        # Create new configuration
+        if [ -n "$INSTALL_FROM_LOCAL" ]; then
+            # Installing from local repository
+            if [ -f "./config/sample_config.yaml" ]; then
+                cp "./config/sample_config.yaml" "$CONFIG_DIR/config.yaml"
+                print_success "Configuration created at $CONFIG_DIR/config.yaml"
+            else
+                # Fallback to creating inline
+                create_default_config
+            fi
+        else
+            # Installing from internet - create inline
+            create_default_config
+        fi
+    fi
+}
+
+create_default_config() {
+    cat > "$CONFIG_DIR/config.yaml" << 'EOF'
+# Nano CLI Configuration
+# This is a sample configuration file for nano-cli
+
+# Default provider and model settings
+default_provider: openai
+default_model: gpt-5-mini
+
+# Provider configurations
+providers:
+  openai:
+    api_key_env: OPENAI_API_KEY
+    known_models:
+      - gpt-5-nano
+      - gpt-5-mini
+      - gpt-5
+      - gpt-4o
+    allow_unknown_models: true
+    
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    api_base: https://api.anthropic.com/v1
+    known_models:
+      - claude-3-haiku-20240307
+      - claude-opus-4-20250514
+      - claude-opus-4-1-20250805
+      - claude-sonnet-4-20250514
+    allow_unknown_models: true
+    
+  ollama:
+    api_base: http://localhost:11434/v1
+    known_models:
+      - gpt-oss:20b
+      - gpt-oss:120b
+      - qwen2.5-coder:3b
+      - llama3.2:3b
+      - mistral-small3.2
+    allow_unknown_models: true
+    discover_models: true
+
+# Agent configuration
+max_tool_calls: 20
+max_turns: 20
+session_timeout: 1800
+
+# Model aliases for convenience
+model_aliases:
+  gpt5: gpt-5
+  gpt5mini: gpt-5-mini
+  gpt5nano: gpt-5-nano
+  claude3haiku: claude-3-haiku-20240307
+  opus4: claude-opus-4-20250514
+  opus41: claude-opus-4-1-20250805
+  sonnet4: claude-sonnet-4-20250514
+  qwen: qwen2.5-coder:3b
+  llama: llama3.2:3b
+  mistral: mistral-small3.2
+
+# Logging configuration
+log_level: INFO
+
+# Performance settings
+cache_enabled: true
+cache_ttl: 3600
+
+# Security settings
+validate_ssl: true
+allow_http: false
+EOF
+    print_success "Configuration created at $CONFIG_DIR/config.yaml"
     
     # Setup example hooks if user wants them
     if [ -f "$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/examples/setup_hooks.sh" ]; then
@@ -230,8 +397,7 @@ EOF
     
     print_success "Sample configuration saved to: $SAMPLE_CONFIG"
     
-    cat << EOF
-
+    echo -e "
 ${BOLD}${YELLOW}📋 Manual Claude Desktop Setup Instructions${NC}
 
 To use nano-agent with Claude Desktop, you need to manually add it to your configuration:
@@ -239,26 +405,26 @@ To use nano-agent with Claude Desktop, you need to manually add it to your confi
 ${BOLD}1. Locate your Claude Desktop configuration file:${NC}
    • macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
    • Linux: ~/.config/Claude/claude_desktop_config.json
-   • Windows: %APPDATA%\\Claude\\claude_desktop_config.json
+   • Windows: %APPDATA%\\\\Claude\\\\claude_desktop_config.json
 
 ${BOLD}2. Add the nano-agent server configuration:${NC}
    
    If the file doesn't exist, create it with this content:
    ${BLUE}
    {
-     "mcpServers": {
-       "nano-agent": {
-         "command": "$NANO_AGENT_CMD",
-         "args": [],
-         "env": {
-           "NANO_AGENT_MCP_MODE": "true"
+     \"mcpServers\": {
+       \"nano-agent\": {
+         \"command\": \"$NANO_AGENT_CMD\",
+         \"args\": [],
+         \"env\": {
+           \"NANO_AGENT_MCP_MODE\": \"true\"
          }
        }
      }
    }
    ${NC}
    
-   If the file exists, add the "nano-agent" section to the existing "mcpServers" object.
+   If the file exists, add the \"nano-agent\" section to the existing \"mcpServers\" object.
    
    ${YELLOW}⚠️  IMPORTANT: Be careful not to overwrite existing server configurations!${NC}
 
@@ -278,8 +444,7 @@ ${BOLD}Available tools in Claude Desktop:${NC}
 • list_sessions - List your conversation sessions
 • get_available_models - Check available AI models
 • get_server_capabilities - View server features
-
-EOF
+"
 }
 
 setup_api_keys() {
@@ -458,8 +623,7 @@ test_installation() {
 
 show_completion_message() {
     clear
-    cat << EOF
-
+    echo -e "
 ${BOLD}${GREEN}🎉 Installation Complete!${NC}
 
 ${BOLD}Nano Agent MCP Server has been successfully installed!${NC}
@@ -474,13 +638,13 @@ ${BOLD}🚀 What's Next:${NC}
 ${BOLD}1. For Claude Desktop users:${NC}
    • Restart Claude Desktop
    • Look for the 🔌 icon to access nano-agent tools
-   • Try: "Use nano-agent to analyze this project"
+   • Try: \"Use nano-agent to analyze this project\"
 
 ${BOLD}2. For CLI users:${NC}
-   • Run: nano-cli run "your prompt here"
+   • Run: nano-cli run \"your prompt here\"
    • Examples:
-     nano-cli run "Create a Python hello world script"
-     nano-cli run "Analyze the files in this directory" --read-only
+     nano-cli run \"Create a Python hello world script\"
+     nano-cli run \"Analyze the files in this directory\" --read-only
 
 ${BOLD}3. Configure API Keys (if not done):${NC}
    • Edit: $INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/.env
@@ -493,12 +657,11 @@ ${BOLD}📚 Documentation:${NC}
 
 ${BOLD}🆘 Need Help?${NC}
    • Run: nano-agent --help
-   • Check: nano-cli run "test connection"
+   • Check: nano-cli run \"test connection\"
    • Issues: https://github.com/meirm/nano-agent/issues
 
 ${GREEN}Happy coding with nano-agent! 🤖✨${NC}
-
-EOF
+"
 }
 
 # Parse command line arguments

@@ -7,6 +7,11 @@ Tests the tools that the OpenAI Agent SDK agent uses during execution.
 from datetime import datetime
 from unittest.mock import mock_open, patch
 
+import sys
+from pathlib import Path
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / 'src'))
+
 from nano_agent.modules.data_types import CreateFileRequest, ReadFileRequest
 from nano_agent.modules.nano_agent_tools import (_create_file_impl,
                                                  _read_file_impl,

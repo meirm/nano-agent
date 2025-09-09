@@ -152,6 +152,7 @@ class InteractiveSession:
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
         enable_trace: bool = False,
+        read_only: bool = False,
     ):
         """Initialize the interactive session."""
         self.model = initial_model
@@ -159,6 +160,7 @@ class InteractiveSession:
         self.api_base = api_base
         self.api_key = api_key
         self.enable_trace = enable_trace
+        self.read_only = read_only
         self.verbose = False
         self.loader = CommandLoader()
         self.agent_loader = AgentLoader()
@@ -444,6 +446,9 @@ class InteractiveSession:
 
         # Handle both slash and non-slash versions for compatibility
         if cmd in ["exit", "quit", "q", "/exit", "/quit"]:
+            # Ensure terminal is in proper state before printing
+            import sys
+            sys.stdout.flush()
             console.print("[dim]Goodbye![/dim]")
             # Return a special value to signal exit
             return "EXIT"
@@ -831,11 +836,15 @@ class InteractiveSession:
         if self.show_welcome:
             self._show_welcome_message()
         else:
+            mode_text = "[bold cyan]Nano Agent Interactive Mode[/bold cyan]\n"
+            if self.read_only:
+                mode_text += "[yellow]🔒 Read-Only Mode - File modifications disabled[/yellow]\n"
+            mode_text += "Type 'help' for commands, 'exit' to quit\n"
+            mode_text += "Tab for autocompletion, ↑/↓ for history"
+            
             console.print(
                 Panel(
-                    "[bold cyan]Nano Agent Interactive Mode[/bold cyan]\n"
-                    "Type 'help' for commands, 'exit' to quit\n"
-                    "Tab for autocompletion, ↑/↓ for history",
+                    mode_text,
                     expand=False,
                 )
             )
@@ -886,6 +895,7 @@ class InteractiveSession:
                     if len(self.chat_history) > 1
                     else None,
                     enable_trace=self.enable_trace,
+                    read_only=self.read_only,
                 )
                 response = _execute_nano_agent(request, enable_rich_logging=True)
 
@@ -948,6 +958,9 @@ class InteractiveSession:
                 continue
             except EOFError:
                 # Handle Ctrl+D
+                # Small delay to let prompt_toolkit clean up
+                import time
+                time.sleep(0.01)
                 console.print("\n[dim]Goodbye![/dim]")
                 break
             except Exception as e:

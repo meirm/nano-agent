@@ -179,6 +179,24 @@ class SearchFilesResponse(BaseModel):
     content: str = Field(..., description="JSON string with file paths ranked by fuzzy matching score")
     error: Optional[str] = Field(default=None, description="Error message if failed")
 
+class BashCommandRequest(BaseModel):
+    """Request model for bash_command agent tool."""
+    command: str = Field(..., description="Shell command to execute")
+    stdin: Optional[str] = Field(default=None, description="Input to provide to stdin")
+    working_dir: Optional[str] = Field(default=None, description="Working directory for command execution")
+    timeout: int = Field(default=30, description="Timeout in seconds")
+    shell: bool = Field(default=True, description="Whether to run command through shell")
+    env: Optional[Dict[str, str]] = Field(default=None, description="Environment variables to set")
+
+class BashCommandResponse(BaseModel):
+    """Response model for bash_command agent tool."""
+    stdout: str = Field(default="", description="Standard output from command")
+    stderr: str = Field(default="", description="Standard error from command")
+    return_code: int = Field(description="Command exit code (0 = success)")
+    success: bool = Field(description="Whether command executed successfully")
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+    execution_time: float = Field(description="Execution time in seconds")
+
 class ChatMessage(BaseModel):
     """A single message in a chat conversation."""
 

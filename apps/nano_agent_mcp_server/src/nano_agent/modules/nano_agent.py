@@ -841,7 +841,34 @@ def _execute_nano_agent(
                         hooks=hooks,
                     )
 
-                result = asyncio.run(run_agent())
+                # Create event loop with proper cleanup handling
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    result = loop.run_until_complete(run_agent())
+                finally:
+                    try:
+                        # Give pending tasks a moment to complete
+                        pending = asyncio.all_tasks(loop)
+                        if pending:
+                            # Cancel all pending tasks
+                            for task in pending:
+                                task.cancel()
+                            # Wait briefly for cancellations to process
+                            loop.run_until_complete(
+                                asyncio.wait_for(
+                                    asyncio.gather(*pending, return_exceptions=True),
+                                    timeout=1.0
+                                )
+                            )
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        pass  # Expected when cancelling tasks
+                    finally:
+                        # Ensure loop is closed
+                        try:
+                            loop.close()
+                        except Exception:
+                            pass  # Ignore errors during close
             else:
                 raise
 

@@ -89,7 +89,7 @@ def test_tools():
     # Import the raw tool functions from nano_agent_tools
     from .modules.nano_agent_tools import (edit_file_raw, get_file_info_raw,
                                            list_directory_raw, read_file_raw,
-                                           write_file_raw)
+                                           write_file_raw, grep_search_raw, search_files_raw, bash_command_raw)
 
     console.print(Panel("[cyan]Testing Nano Agent Tools[/cyan]", expand=False))
 
@@ -110,6 +110,21 @@ def test_tools():
     console.print("\n[yellow]3. Testing read_file:[/yellow]")
     result = read_file_raw(test_file)
     console.print(f"Content: {result}")
+
+    # Test grep_search
+    console.print("\n[yellow]4. Testing grep_search:[/yellow]")
+    result = grep_search_raw("This is line 2", "*.txt")
+    console.print(f"Search result: {result}")
+
+    # Test search_files
+    console.print("\n[yellow]5. Testing search_files:[/yellow]")
+    result = search_files_raw("test_nano_agent")
+    console.print(f"Search result: {result}")
+
+    # Test bash_command
+    console.print("\n[yellow]6. Testing bash_command:[/yellow]")
+    result = bash_command_raw("ls -l")
+    console.print(f"Command result: {result}")
 
     # Test edit_file
     console.print("\n[yellow]4. Testing edit_file:[/yellow]")
@@ -569,6 +584,9 @@ def interactive(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose output"
     ),
+    read_only: bool = typer.Option(
+        False, "--read-only", help="Disable file system modifications (safe exploration mode)"
+    ),
 ):
     """Run the agent in enhanced interactive mode with autocompletion."""
     # Determine provider first before checking API key
@@ -609,7 +627,7 @@ def interactive(
 
     # Use simple mode if requested or if prompt_toolkit is not available
     if simple:
-        _run_simple_interactive(model, provider, api_base, api_key)
+        _run_simple_interactive(model, provider, verbose, api_base, api_key, read_only)
     else:
         try:
             from .modules.interactive_mode import InteractiveSession
@@ -621,6 +639,7 @@ def interactive(
                 api_base=api_base,
                 api_key=api_key,
                 enable_trace=enable_trace,
+                read_only=read_only,
             )
             session.run()
         except ImportError:
@@ -630,7 +649,7 @@ def interactive(
             (console_stderr if verbose else console).print(
                 "[dim]Falling back to simple mode...[/dim]\n"
             )
-            _run_simple_interactive(model, provider, verbose, api_base, api_key)
+            _run_simple_interactive(model, provider, verbose, api_base, api_key, read_only)
 
 
 def _run_simple_interactive(
@@ -639,11 +658,17 @@ def _run_simple_interactive(
     verbose: bool = False,
     api_base: str = None,
     api_key: str = None,
+    read_only: bool = False,
 ):
     """Run simple interactive mode without autocompletion."""
+    mode_text = "[cyan]Nano Agent Interactive Mode (Simple)[/cyan]"
+    if read_only:
+        mode_text += "\n[yellow]🔒 Read-Only Mode - File modifications disabled[/yellow]"
+    mode_text += "\nType 'exit' to quit"
+    
     (console_stderr if verbose else console).print(
         Panel(
-            "[cyan]Nano Agent Interactive Mode (Simple)[/cyan]\nType 'exit' to quit",
+            mode_text,
             expand=False,
         )
     )
@@ -798,6 +823,7 @@ def _run_simple_interactive(
                 provider=provider,
                 api_base=api_base,
                 api_key=api_key,
+                read_only=read_only,
             )
 
             # Execute without progress spinner
