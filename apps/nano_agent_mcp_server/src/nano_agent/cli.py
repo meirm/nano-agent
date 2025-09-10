@@ -189,10 +189,10 @@ def run(
         False, "--billing", help="Show token usage and cost information"
     ),
     output_format: str = typer.Option(
-        "rich",
+        "simple",
         "--output-format",
         "-f",
-        help="Output format: simple, json, or rich (default)",
+        help="Output format: simple (default), json, or rich",
     ),
     output_thinking: bool = typer.Option(
         False, "--output-thinking", help="Show agent thinking and reasoning text"
