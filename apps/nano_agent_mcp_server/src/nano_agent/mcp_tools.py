@@ -188,6 +188,9 @@ async def get_server_capabilities() -> Dict[str, Any]:
                     "list_directory",
                     "get_file_info",
                     "edit_file",
+                    "grep_search",
+                    "search_files",
+                    "bash_command",
                 ],
             },
         }

@@ -331,7 +331,7 @@ export NANO_AGENT_MAX_TOOL_CALLS=50
 - get_file_info   # Metadata, size, permissions
 
 # Search & Analysis (NEW)
-- grep_file       # Search within specific files
+- grep_search     # Search for patterns in files using regex
 - search_files    # Find files by pattern matching
 - bash_command    # Execute shell commands safely
 - get_current_time # Time utilities for scheduling

@@ -63,6 +63,12 @@ Major feature release introducing enhanced search capabilities, improved CLI fun
   - Beautiful panels and formatting in interactive sessions
   - Consistent user experience for interactive use
 
+### 📦 Version Information
+- **`nano-cli --version`** flag added
+  - Displays current version (0.3.0)
+  - Standard CLI behavior for version checking
+  - Version centrally managed in pyproject.toml
+
 ## 🔧 Improvements
 
 ### Enhanced Error Handling

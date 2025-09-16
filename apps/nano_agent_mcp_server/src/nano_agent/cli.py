@@ -37,9 +37,36 @@ from .modules.output_formats import (AgentResponse, BillingInfo, OutputFormat,
                                      create_formatter)
 from .modules.session_manager import SessionManager
 
+# Import version from package
+try:
+    from . import __version__
+except ImportError:
+    __version__ = "0.3.0"  # Fallback version
+
 app = typer.Typer()
 console = Console()
 console_stderr = Console(stderr=True)
+
+
+def version_callback(value: bool):
+    """Show version and exit."""
+    if value:
+        console.print(f"nano-cli version {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        help="Show version and exit",
+        callback=version_callback,
+        is_eager=True,
+    )
+):
+    """Nano Agent CLI - Autonomous AI agent with file system capabilities."""
+    pass
 
 
 def get_log_console(verbose: bool = False) -> Console:
