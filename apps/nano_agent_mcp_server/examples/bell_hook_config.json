@@ -1,0 +1,30 @@
+  {
+  "version": "1.0",
+  "enabled": true,
+  "timeout_seconds": 5,
+  "parallel_execution": true,
+  "hooks": {
+    "post_agent_complete": [
+      {
+        "name": "bell_notification",
+        "command": "~/.nano-cli/hooks/bell_notification.sh",
+        "blocking": false,
+        "timeout": 2,
+        "enabled": true,
+        "contexts": ["cli"],
+        "_comment": "Play a bell sound when agent completes (CLI only)"
+      }
+    ],
+    "agent_error": [
+      {
+        "name": "error_bell_notification",
+        "command": "~/.nano-cli/hooks/bell_notification.sh",
+        "blocking": false,
+        "timeout": 2,
+        "enabled": true,
+        "contexts": ["cli"],
+        "_comment": "Play an error sound when agent fails (CLI only)"
+      }
+    ]
+  }
+}

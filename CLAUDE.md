@@ -65,7 +65,7 @@ uv run nano-agent
   - `prompt_nano_agent`: Full capabilities including file modifications
   - `prompt_nano_agent_readonly`: Safe read-only mode for analysis
 - **MCP Server** (`apps/nano_agent_mcp_server`): Receives prompts, spawns internal agents
-- **Inner Agent** (OpenAI SDK): Created per request with file system tools (read_file, write_file, list_directory, get_file_info, edit_file)
+- **Inner Agent** (OpenAI SDK): Created per request with file system tools (read_file, write_file, list_directory, get_file_info, edit_file, grep_search, search_files, bash_command)
 
 ### Read-Only Mode
 Use `prompt_nano_agent_readonly` for safe exploration and analysis without any file system modifications. Perfect for:

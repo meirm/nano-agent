@@ -183,6 +183,16 @@ async def get_server_capabilities() -> Dict[str, Any]:
                     "timeout_seconds": 600,
                 },
                 "available_tools": [
+                    "prompt_nano_agent",
+                    "prompt_nano_agent_readonly",
+                    "get_session_info",
+                    "list_sessions",
+                    "clear_old_sessions",
+                    "get_available_models",
+                    "list_provider_models",
+                    "get_server_capabilities",
+                ],
+                "agent_internal_tools": [
                     "read_file",
                     "write_file",
                     "list_directory",
@@ -191,6 +201,120 @@ async def get_server_capabilities() -> Dict[str, Any]:
                     "grep_search",
                     "search_files",
                     "bash_command",
+                ],
+                "available_resources": [
+                    {
+                        "uri": "resource://documentation",
+                        "name": "Server Documentation",
+                        "description": "Complete usage guide for the Nano Agent MCP server",
+                    },
+                    {
+                        "uri": "resource://version",
+                        "name": "Server version",
+                        "description": "Server version",
+                    },
+                ],
+                "hook_events": [
+                    {
+                        "event": "pre_agent_start",
+                        "description": "Before agent initialization",
+                        "blocking": True,
+                        "data_available": ["prompt", "model", "provider", "temperature", "max_tokens"],
+                    },
+                    {
+                        "event": "post_agent_complete",
+                        "description": "After agent completes successfully",
+                        "blocking": False,
+                        "data_available": ["prompt", "agent_response", "token_usage", "execution_time"],
+                    },
+                    {
+                        "event": "agent_error",
+                        "description": "When agent encounters an error",
+                        "blocking": False,
+                        "data_available": ["prompt", "error", "execution_time"],
+                    },
+                    {
+                        "event": "pre_tool_use",
+                        "description": "Before any tool execution",
+                        "blocking": True,
+                        "data_available": ["tool_name", "tool_args"],
+                    },
+                    {
+                        "event": "post_tool_use",
+                        "description": "After successful tool execution",
+                        "blocking": False,
+                        "data_available": ["tool_name", "tool_args", "tool_result"],
+                    },
+                    {
+                        "event": "tool_error",
+                        "description": "When tool execution fails",
+                        "blocking": False,
+                        "data_available": ["tool_name", "tool_args", "error"],
+                    },
+                    {
+                        "event": "mcp_request_received",
+                        "description": "When MCP request arrives",
+                        "blocking": True,
+                        "data_available": ["prompt", "mcp_client", "mcp_request_id"],
+                    },
+                    {
+                        "event": "mcp_response_ready",
+                        "description": "Before sending MCP response",
+                        "blocking": False,
+                        "data_available": ["agent_response", "token_usage", "mcp_client", "mcp_request_id"],
+                    },
+                ],
+                "available_prompts": [
+                    {
+                        "name": "code_review_prompt",
+                        "description": "Generate prompt for comprehensive code review",
+                        "parameters": ["file_path", "focus_areas (optional)"],
+                    },
+                    {
+                        "name": "refactor_prompt",
+                        "description": "Generate prompt for code refactoring",
+                        "parameters": ["file_path", "refactor_goals (optional)"],
+                    },
+                    {
+                        "name": "test_generation_prompt",
+                        "description": "Generate prompt for creating unit tests",
+                        "parameters": ["file_path", "test_framework", "coverage_target"],
+                    },
+                    {
+                        "name": "documentation_prompt",
+                        "description": "Generate prompt for creating documentation",
+                        "parameters": ["directory", "doc_type", "include_examples"],
+                    },
+                    {
+                        "name": "security_audit_prompt",
+                        "description": "Generate prompt for security analysis",
+                        "parameters": ["directory", "security_focus (optional)"],
+                    },
+                    {
+                        "name": "api_design_prompt",
+                        "description": "Generate prompt for API design",
+                        "parameters": ["spec_type", "resource_name", "operations (optional)"],
+                    },
+                    {
+                        "name": "bug_fix_prompt",
+                        "description": "Generate prompt for debugging and fixing errors",
+                        "parameters": ["error_message", "file_path (optional)", "context (optional)"],
+                    },
+                    {
+                        "name": "code_migration_prompt",
+                        "description": "Generate prompt for code migration between versions",
+                        "parameters": ["source_version", "target_version", "file_or_directory"],
+                    },
+                    {
+                        "name": "performance_optimization_prompt",
+                        "description": "Generate prompt for performance optimization",
+                        "parameters": ["file_path", "performance_targets (optional)"],
+                    },
+                    {
+                        "name": "project_setup_prompt",
+                        "description": "Generate prompt for setting up a new project",
+                        "parameters": ["project_name", "project_type", "features (optional)"],
+                    },
                 ],
             },
         }

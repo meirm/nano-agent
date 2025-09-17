@@ -25,7 +25,10 @@ from .agent_loader import AgentLoader
 from .command_loader import CommandLoader, parse_command_syntax
 from .constants import AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_PROVIDER
 from .data_types import ChatMessage, PromptNanoAgentRequest
-from .nano_agent import _execute_nano_agent
+try:
+    from .nano_agent_runner import run_nano_agent_properly as _execute_nano_agent
+except ImportError:
+    from .nano_agent import _execute_nano_agent
 
 console = Console()
 
@@ -973,3 +976,25 @@ class InteractiveSession:
                     import traceback
 
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
+        # Clean up nano agent resources before exiting
+        try:
+            from .nano_agent_runner import cleanup_nano_agent
+            cleanup_nano_agent()
+        except ImportError:
+            # Fallback to old cleanup
+            try:
+                try:
+                    from ..modules.hook_manager_simplified import get_simple_hook_manager as get_hook_manager
+                except ImportError:
+                    from ..modules.hook_manager import get_hook_manager
+
+                hook_manager = get_hook_manager()
+                if hasattr(hook_manager, 'executor') and hook_manager.executor:
+                    # Call the cleanup method directly
+                    if hasattr(hook_manager.executor, 'cleanup'):
+                        hook_manager.executor.cleanup()
+            except:
+                pass
+        except Exception:
+            pass  # Ignore any cleanup errors

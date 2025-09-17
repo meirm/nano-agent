@@ -28,7 +28,10 @@ except ImportError:
 
 # Import hook system (optional - gracefully degrade if not available)
 try:
-    from .hook_manager import get_hook_manager
+    try:
+        from .hook_manager_simplified import get_simple_hook_manager as get_hook_manager
+    except ImportError:
+        from .hook_manager import get_hook_manager
     from .hook_types import HookEvent, HookEventData
 
     HOOKS_AVAILABLE = True

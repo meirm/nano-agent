@@ -18,9 +18,70 @@ from .hook_types import (HookConfig, HookEvent, HookEventData,
 
 logger = logging.getLogger(__name__)
 
+# Import the new redesigned executor
+try:
+    from .hook_executor_v2 import HookExecutorV2
+    USE_NEW_EXECUTOR = True
+except ImportError:
+    try:
+        from .hook_executor import HookExecutor as NewHookExecutor
+        USE_NEW_EXECUTOR = True
+    except ImportError:
+        USE_NEW_EXECUTOR = False
+
 
 class HookExecutor:
     """Executes individual hook commands."""
+
+    def __init__(self):
+        """Initialize the executor."""
+        self._active_processes = set()
+
+    async def cleanup_processes(self):
+        """Clean up any remaining active processes."""
+        if self._active_processes:
+            # Create a list to avoid modification during iteration
+            processes_to_clean = list(self._active_processes)
+
+            for process in processes_to_clean:
+                try:
+                    if process.returncode is None:
+                        # First try to terminate gracefully
+                        try:
+                            process.terminate()
+                        except ProcessLookupError:
+                            # Process already gone
+                            continue
+
+                        # Give it a moment to terminate
+                        try:
+                            await asyncio.wait_for(process.wait(), timeout=0.1)
+                        except asyncio.TimeoutError:
+                            # Force kill if it doesn't terminate
+                            try:
+                                process.kill()
+                                # Don't wait after kill, it might hang
+                            except ProcessLookupError:
+                                pass  # Process already gone
+                except Exception:
+                    pass  # Ignore any other errors during cleanup
+
+            self._active_processes.clear()
+
+    def cleanup(self):
+        """Synchronous cleanup method for compatibility."""
+        # Try to clean up processes if possible
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self.cleanup_processes())
+            finally:
+                loop.close()
+        except Exception:
+            # If async cleanup fails, just clear the set
+            self._active_processes.clear()
 
     async def execute_hook(
         self, hook_config: HookConfig, event_data: HookEventData
@@ -70,6 +131,7 @@ class HookExecutor:
             if event_data.mcp_request_id:
                 env["NANO_MCP_REQUEST_ID"] = event_data.mcp_request_id
 
+        process = None
         try:
             # Expand command path if it starts with ~
             command = hook_config.command
@@ -87,6 +149,9 @@ class HookExecutor:
                 env=env,
                 cwd=event_data.working_dir,
             )
+
+            # Store process reference for cleanup
+            self._active_processes.add(process)
 
             # Send input and wait for completion with timeout
             try:
@@ -107,6 +172,23 @@ class HookExecutor:
                     execution_time=time.time() - start_time,
                     blocked=hook_config.blocking,
                 )
+            finally:
+                # Remove from active processes and ensure process is fully closed
+                if process:
+                    # Ensure the process pipes are closed
+                    try:
+                        if process.stdin:
+                            process.stdin.close()
+                        if process.stdout:
+                            process.stdout.close()
+                        if process.stderr:
+                            process.stderr.close()
+                    except:
+                        pass
+
+                    # Remove from tracking
+                    if process in self._active_processes:
+                        self._active_processes.discard(process)
 
             # Decode output
             stdout_str = stdout.decode("utf-8", errors="replace").strip()
@@ -135,6 +217,26 @@ class HookExecutor:
 
         except Exception as e:
             logger.error(f"Error executing hook '{hook_config.name}': {e}")
+
+            # Clean up the process if it exists
+            if process:
+                try:
+                    if process.returncode is None:
+                        process.kill()
+                    # Close pipes
+                    if process.stdin:
+                        process.stdin.close()
+                    if process.stdout:
+                        process.stdout.close()
+                    if process.stderr:
+                        process.stderr.close()
+                except:
+                    pass
+
+                # Remove from tracking
+                if process in self._active_processes:
+                    self._active_processes.discard(process)
+
             return HookExecutionResult(
                 hook_name=hook_config.name,
                 success=False,
@@ -170,10 +272,24 @@ class HookManager:
         self._initialized = True
         self.config_path = config_path
         self.config = self._load_configuration()
-        self.executor = HookExecutor()
+        if USE_NEW_EXECUTOR:
+            try:
+                self.executor = HookExecutorV2()
+            except NameError:
+                self.executor = NewHookExecutor()
+        else:
+            self.executor = HookExecutor()
 
         # Detect execution context
         self.context = self._detect_context()
+
+    def __del__(self):
+        """Cleanup when the hook manager is destroyed."""
+        if hasattr(self, 'executor') and hasattr(self.executor, 'cleanup'):
+            try:
+                self.executor.cleanup()
+            except Exception:
+                pass  # Ignore errors during cleanup
 
         logger.info(f"HookManager initialized with context: {self.context}")
         if self.config.enabled:
@@ -286,14 +402,15 @@ class HookManager:
         return merged
 
     async def trigger_hook(
-        self, event: HookEvent, data: HookEventData, blocking: bool = False
+        self, event: HookEvent, data: HookEventData, wait_for_completion: bool = False
     ) -> HookResult:
         """Trigger hooks for a specific event.
 
         Args:
             event: Hook event type
             data: Event data to pass to hooks
-            blocking: Whether to wait for blocking hooks
+            wait_for_completion: Whether to wait for non-blocking hooks to complete
+                                 (blocking hooks are always waited for)
 
         Returns:
             HookResult with execution details
@@ -323,40 +440,78 @@ class HookManager:
         results = []
         total_time = 0.0
         blocked = False
+        fire_and_forget_tasks = []
 
-        if self.config.parallel_execution and not blocking:
-            # Execute hooks in parallel (for non-blocking hooks)
-            tasks = [
-                self.executor.execute_hook(hook, data)
-                for hook in applicable_hooks
-                if not hook.blocking
-            ]
+        # Separate blocking and non-blocking hooks
+        blocking_hooks = [h for h in applicable_hooks if h.blocking]
+        non_blocking_hooks = [h for h in applicable_hooks if not h.blocking]
 
-            if tasks:
-                parallel_results = await asyncio.gather(*tasks)
-                results.extend(parallel_results)
-                total_time = max(r.execution_time for r in parallel_results)
+        # Always execute blocking hooks first and wait for them
+        for hook in blocking_hooks:
+            result = await self.executor.execute_hook(hook, data)
+            results.append(result)
+            total_time += result.execution_time
 
-            # Execute blocking hooks sequentially
-            for hook in applicable_hooks:
-                if hook.blocking:
-                    result = await self.executor.execute_hook(hook, data)
-                    results.append(result)
-                    total_time += result.execution_time
+            if result.blocked:
+                blocked = True
+                break  # Stop on first blocking hook that fails
 
-                    if result.blocked:
-                        blocked = True
-                        break  # Stop on first blocking hook
-        else:
-            # Execute all hooks sequentially
-            for hook in applicable_hooks:
-                result = await self.executor.execute_hook(hook, data)
-                results.append(result)
-                total_time += result.execution_time
+        # If not blocked, execute non-blocking hooks
+        if not blocked and non_blocking_hooks:
+            if self.config.parallel_execution:
+                # Execute non-blocking hooks in parallel
+                tasks = [
+                    self.executor.execute_hook(hook, data)
+                    for hook in non_blocking_hooks
+                ]
 
-                if result.blocked:
-                    blocked = True
-                    break  # Stop on first blocking hook
+                if wait_for_completion:
+                    # Wait for all non-blocking hooks to complete
+                    parallel_results = await asyncio.gather(*tasks)
+                    results.extend(parallel_results)
+                    if parallel_results:
+                        total_time = max(total_time, max(r.execution_time for r in parallel_results))
+                else:
+                    # Fire and forget - start tasks but don't wait for completion
+                    # We need to ensure they at least start before we return
+                    for task in tasks:
+                        fire_and_forget_tasks.append(asyncio.ensure_future(task))
+
+                    # Add placeholder results for non-blocking hooks
+                    for hook in non_blocking_hooks:
+                        results.append(HookExecutionResult(
+                            hook_name=hook.name,
+                            success=True,  # Assume success since we're not waiting
+                            exit_code=0,
+                            stdout="Executing in background",
+                            execution_time=0.0,
+                        ))
+            else:
+                # Execute non-blocking hooks sequentially
+                if wait_for_completion:
+                    for hook in non_blocking_hooks:
+                        result = await self.executor.execute_hook(hook, data)
+                        results.append(result)
+                        total_time += result.execution_time
+                else:
+                    # Fire and forget sequential execution
+                    for hook in non_blocking_hooks:
+                        task = asyncio.ensure_future(self.executor.execute_hook(hook, data))
+                        fire_and_forget_tasks.append(task)
+                        results.append(HookExecutionResult(
+                            hook_name=hook.name,
+                            success=True,
+                            exit_code=0,
+                            stdout="Executing in background",
+                            execution_time=0.0,
+                        ))
+
+        # Store fire-and-forget tasks for potential cleanup later
+        if fire_and_forget_tasks:
+            self._background_tasks = getattr(self, '_background_tasks', set())
+            self._background_tasks.update(fire_and_forget_tasks)
+            # Clean up completed tasks
+            self._background_tasks = {t for t in self._background_tasks if not t.done()}
 
         return HookResult(
             event=event,
@@ -370,6 +525,129 @@ class HookManager:
         """Reload hook configuration from files."""
         logger.info("Reloading hook configuration")
         self.config = self._load_configuration()
+
+    def trigger_hook_sync(
+        self, event: HookEvent, data: HookEventData, wait_for_completion: bool = True
+    ) -> HookResult:
+        """Synchronous wrapper for trigger_hook.
+
+        This is used when running in synchronous contexts like the CLI.
+
+        Args:
+            event: Hook event type
+            data: Event data to pass to hooks
+            wait_for_completion: Whether to wait for non-blocking hooks to complete.
+                                 Default is True for sync contexts to ensure clean shutdown.
+                                 Blocking hooks are always waited for.
+
+        Returns:
+            HookResult with execution details
+        """
+        try:
+            # Create a new event loop for hook execution
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            try:
+                # Run the async hook trigger
+                # For sync contexts, we generally want to wait for hooks to avoid
+                # premature termination, but respect the wait_for_completion flag
+                result = loop.run_until_complete(
+                    self.trigger_hook(event, data, wait_for_completion)
+                )
+
+                # If a hook blocked execution, we need to clean up immediately
+                if result.blocked:
+                    # Clean up processes right away
+                    if hasattr(self.executor, 'cleanup'):
+                        self.executor.cleanup()
+                    elif hasattr(self.executor, 'cleanup_processes'):
+                        loop.run_until_complete(self.executor.cleanup_processes())
+                    return result
+
+                # Give fire-and-forget tasks a brief moment to start
+                # This helps avoid immediate termination of background tasks
+                if not wait_for_completion:
+                    loop.run_until_complete(asyncio.sleep(0.05))
+
+                # Clean up any remaining processes
+                if hasattr(self.executor, 'cleanup'):
+                    self.executor.cleanup()
+                elif hasattr(self.executor, 'cleanup_processes'):
+                    loop.run_until_complete(self.executor.cleanup_processes())
+
+                # If waiting for completion, ensure all tasks finish
+                if wait_for_completion:
+                    pending = asyncio.all_tasks(loop)
+                    if pending:
+                        # Wait for tasks to finish
+                        try:
+                            loop.run_until_complete(
+                                asyncio.wait_for(
+                                    asyncio.gather(*pending, return_exceptions=True),
+                                    timeout=1.0
+                                )
+                            )
+                        except asyncio.TimeoutError:
+                            pass  # It's ok if they don't finish in time
+
+                return result
+
+            finally:
+                # Ensure clean shutdown
+                try:
+                    # Make sure to clean up subprocess transports first
+                    # This is critical to avoid "Exception ignored" errors
+                    try:
+                        if hasattr(self.executor, 'cleanup'):
+                            self.executor.cleanup()
+                        elif hasattr(self.executor, 'cleanup_processes'):
+                            loop.run_until_complete(self.executor.cleanup_processes())
+                    except Exception:
+                        pass
+
+                    # Give subprocess transports time to close properly
+                    loop.run_until_complete(asyncio.sleep(0.01))
+
+                    # Shutdown all async generators first
+                    try:
+                        loop.run_until_complete(loop.shutdown_asyncgens())
+                    except Exception:
+                        pass
+
+                    # Cancel any remaining tasks
+                    pending = asyncio.all_tasks(loop)
+                    if pending:
+                        for task in pending:
+                            task.cancel()
+
+                        # Wait for cancellation with a short timeout
+                        loop.run_until_complete(
+                            asyncio.wait(pending, timeout=0.1, return_when=asyncio.ALL_COMPLETED)
+                        )
+
+                    # Shutdown the default executor
+                    try:
+                        loop.run_until_complete(loop.shutdown_default_executor())
+                    except Exception:
+                        pass
+
+                    # Final pause to let everything settle
+                    loop.run_until_complete(asyncio.sleep(0))
+
+                    # Stop and close the loop
+                    loop.stop()
+                    loop.close()
+                except Exception:
+                    # If all else fails, just close it
+                    try:
+                        loop.close()
+                    except:
+                        pass
+
+        except Exception as e:
+            logger.error(f"Error triggering hook synchronously: {e}")
+            return HookResult(event=event, hooks_executed=0, results=[])
 
 
 # Global singleton instance

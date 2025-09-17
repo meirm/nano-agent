@@ -684,7 +684,11 @@ parse_args() {
                 echo "  ./install.sh --local"
                 exit 0
                 ;;
+            --no-confirm) NO_CONFIRM=1 ;;
+            --no-test) NO_TEST=1 ;;
+            --no-api-config) NO_API_CONFIG=1 ;;
             *) echo "Unknown parameter: $1"; exit 1 ;;
+
         esac
         shift
     done
@@ -703,7 +707,11 @@ main() {
     fi
     echo "This script will install Nano Agent MCP Server with Claude Desktop integration."
     echo
-    read -p "$(echo -e "${YELLOW}Continue with installation? (y/N): ${NC}")" -n 1 -r
+    if [ -z "$NO_CONFIRM" ]; then
+        read -p "$(echo -e "${YELLOW}Continue with installation? (y/N): ${NC}")" -n 1 -r
+    else
+        REPLY="Y"
+    fi
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         echo "Installation cancelled."
@@ -713,9 +721,13 @@ main() {
     check_requirements
     install_nano_agent
     setup_configuration
-    setup_api_keys
+    if [ -z "$NO_API_CONFIG" ]; then
+        setup_api_keys
+    fi
     show_claude_desktop_instructions
-    test_installation
+    if [ -z "$NO_TEST" ]; then
+        test_installation
+    fi
     show_completion_message
 }
 

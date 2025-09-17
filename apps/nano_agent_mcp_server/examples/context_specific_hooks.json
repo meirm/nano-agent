@@ -1,0 +1,125 @@
+{
+  "version": "1.0",
+  "enabled": true,
+  "timeout_seconds": 5,
+  "parallel_execution": true,
+  "hooks": {
+    "pre_agent_start": [
+      {
+        "name": "cli_prompt_enhancer",
+        "command": "python3 ~/.nano-cli/hooks/enhance_prompt.py",
+        "blocking": false,
+        "timeout": 2,
+        "enabled": true,
+        "contexts": ["cli"],
+        "_comment": "Only enhance prompts in CLI mode for interactive use"
+      },
+      {
+        "name": "mcp_rate_limiter",
+        "command": "python3 ~/.nano-cli/hooks/rate_limit.py",
+        "blocking": true,
+        "timeout": 1,
+        "enabled": true,
+        "contexts": ["mcp"],
+        "_comment": "Rate limiting only needed for MCP API calls"
+      }
+    ],
+    "pre_tool_use": [
+      {
+        "name": "cli_confirmation",
+        "command": "python3 ~/.nano-cli/hooks/confirm_dangerous.py",
+        "blocking": true,
+        "timeout": 30,
+        "enabled": true,
+        "contexts": ["cli"],
+        "matcher": {
+          "tool": ["write_file", "edit_file", "bash_command"]
+        },
+        "_comment": "Ask for user confirmation in CLI for dangerous operations"
+      },
+      {
+        "name": "mcp_strict_security",
+        "command": "python3 ~/.nano-cli/hooks/strict_security.py",
+        "blocking": true,
+        "timeout": 2,
+        "enabled": true,
+        "contexts": ["mcp"],
+        "matcher": {
+          "tool": ["write_file", "edit_file", "bash_command"]
+        },
+        "_comment": "Strict automatic security checks for MCP (no user to ask)"
+      },
+      {
+        "name": "universal_logger",
+        "command": "~/.nano-cli/hooks/log_tool_usage.sh",
+        "blocking": false,
+        "timeout": 1,
+        "enabled": true,
+        "contexts": ["cli", "mcp"],
+        "_comment": "Log everything regardless of context"
+      }
+    ],
+    "post_agent_complete": [
+      {
+        "name": "cli_session_summary",
+        "command": "python3 ~/.nano-cli/hooks/show_summary.py",
+        "blocking": false,
+        "timeout": 2,
+        "enabled": true,
+        "contexts": ["cli"],
+        "_comment": "Show nice summary to CLI users"
+      },
+      {
+        "name": "mcp_metrics_collector",
+        "command": "python3 ~/.nano-cli/hooks/collect_metrics.py",
+        "blocking": false,
+        "timeout": 2,
+        "enabled": true,
+        "contexts": ["mcp"],
+        "_comment": "Collect detailed metrics for MCP usage analysis"
+      }
+    ],
+    "agent_error": [
+      {
+        "name": "cli_error_helper",
+        "command": "python3 ~/.nano-cli/hooks/suggest_fix.py",
+        "blocking": false,
+        "timeout": 2,
+        "enabled": true,
+        "contexts": ["cli"],
+        "_comment": "Provide helpful suggestions to CLI users on errors"
+      },
+      {
+        "name": "mcp_error_reporter",
+        "command": "python3 ~/.nano-cli/hooks/report_error.py",
+        "blocking": false,
+        "timeout": 5,
+        "enabled": true,
+        "contexts": ["mcp"],
+        "_comment": "Send error reports to monitoring system for MCP"
+      }
+    ],
+    "mcp_request_received": [
+      {
+        "name": "mcp_auth_check",
+        "command": "python3 ~/.nano-cli/hooks/verify_auth.py",
+        "blocking": true,
+        "timeout": 2,
+        "enabled": true,
+        "contexts": ["mcp"],
+        "_comment": "MCP-only event - verify client authentication"
+      }
+    ],
+    "user_prompt_submit": [
+      {
+        "name": "cli_history_save",
+        "command": "python3 ~/.nano-cli/hooks/save_history.py",
+        "blocking": false,
+        "timeout": 1,
+        "enabled": true,
+        "contexts": ["cli"],
+        "_comment": "Save CLI command history for user convenience"
+      }
+    ]
+  }
+}

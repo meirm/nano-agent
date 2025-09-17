@@ -29,7 +29,10 @@ from .token_tracking import TokenTracker, format_cost, format_token_count
 
 # Hook support
 try:
-    from .hook_manager import get_hook_manager
+    try:
+        from .hook_manager_simplified import get_simple_hook_manager as get_hook_manager
+    except ImportError:
+        from .hook_manager import get_hook_manager
     from .hook_types import HookEvent, HookEventData
 
     HOOKS_AVAILABLE = True
@@ -677,6 +680,36 @@ def _execute_nano_agent(
     """
     start_time = time.time()
 
+    # Trigger pre-agent start hook if available
+    if HOOKS_AVAILABLE:
+        try:
+            hook_manager = get_hook_manager()
+            event_data = HookEventData(
+                event="pre_agent_start",
+                timestamp=datetime.now().isoformat(),
+                context=hook_manager.context,
+                working_dir=os.getcwd(),
+                model=request.model,
+                provider=request.provider,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+                prompt=request.agentic_prompt,
+            )
+
+            pre_result = hook_manager.trigger_hook_sync(
+                HookEvent.PRE_AGENT_START, event_data, wait_for_completion=True
+            )
+
+            if pre_result.blocked:
+                return PromptNanoAgentResponse(
+                    success=False,
+                    error=pre_result.blocking_reason
+                    or "Agent execution blocked by hook",
+                    execution_time_seconds=time.time() - start_time,
+                )
+        except Exception as e:
+            logger.warning(f"Error in pre-agent hook: {e}")
+
     try:
         logger.info(
             f"Executing nano agent with Agent SDK: {request.agentic_prompt[:100]}..."
@@ -759,7 +792,8 @@ def _execute_nano_agent(
             hooks = TokenTrackingHooks(token_tracker=token_tracker)
 
         # Run the agent synchronously
-        # Handle the case where there might not be an event loop
+        # Runner.run_sync() needs an event loop to exist (it calls get_event_loop())
+        # So we ensure one exists
         import asyncio
 
         try:
@@ -768,6 +802,7 @@ def _execute_nano_agent(
                 raise RuntimeError("Event loop is closed")
         except RuntimeError:
             # Create a new event loop if none exists or it's closed
+            # This is needed for Runner.run_sync() to work
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
@@ -865,83 +900,9 @@ def _execute_nano_agent(
                     # Not a JSON parsing error, re-raise immediately
                     raise
             except RuntimeError as e:
-                if "no current event loop" in str(e).lower():
-                    # Fallback: use asyncio.run if run_sync fails
-                    async def run_agent():
-                        # Apply same retry logic for async case
-                        retry_count_async = 0
-                        while retry_count_async <= max_retries:
-                            try:
-                                if retry_count_async > 0:
-                                    async_retry_prompt = (
-                                        f"{full_prompt}\n\n"
-                                        f"IMPORTANT: The previous attempt failed because of improper tool calling format. "
-                                        f"Remember to output ONLY valid JSON when calling tools, with no explanatory text before it. "
-                                        f"For example, to read a file, output only: {{\"file_path\": \"/path/to/file\"}}"
-                                    )
-                                    logger.info(f"Async retry with clarification (attempt {retry_count_async + 1}/{max_retries + 1})")
-                                else:
-                                    async_retry_prompt = full_prompt
-                                
-                                return await Runner.run(
-                                    agent,
-                                    async_retry_prompt,  # Use the retry prompt
-                                    max_turns=max_turns,
-                                    run_config=RunConfig(
-                                        workflow_name="nano_agent_task",
-                                        trace_metadata={
-                                            "model": request.model,
-                                            "provider": request.provider,
-                                            "timestamp": datetime.now().isoformat(),
-                                            "has_history": has_history,
-                                            "retry_attempt": str(retry_count_async),
-                                        },
-                                    ),
-                                    hooks=hooks,
-                                )
-                            except InternalServerError as e:
-                                error_str = str(e)
-                                if "error parsing tool call" in error_str and "invalid character" in error_str:
-                                    retry_count_async += 1
-                                    if retry_count_async > max_retries:
-                                        logger.error(f"Async failed after {max_retries} retries for JSON parsing error")
-                                        raise
-                                    else:
-                                        logger.warning(f"Async JSON parsing error, retrying ({retry_count_async}/{max_retries})")
-                                        continue
-                                else:
-                                    raise
-
-                    # Create event loop with proper cleanup handling
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        result = loop.run_until_complete(run_agent())
-                    finally:
-                        try:
-                            # Give pending tasks a moment to complete
-                            pending = asyncio.all_tasks(loop)
-                            if pending:
-                                # Cancel all pending tasks
-                                for task in pending:
-                                    task.cancel()
-                                # Wait briefly for cancellations to process
-                                loop.run_until_complete(
-                                    asyncio.wait_for(
-                                        asyncio.gather(*pending, return_exceptions=True),
-                                        timeout=1.0
-                                    )
-                                )
-                        except (asyncio.TimeoutError, asyncio.CancelledError):
-                            pass  # Expected when cancelling tasks
-                        finally:
-                            # Ensure loop is closed
-                            try:
-                                loop.close()
-                            except Exception:
-                                pass  # Ignore errors during close
-                else:
-                    raise
+                # This shouldn't happen now that we ensure an event loop exists
+                logger.error(f"Runtime error in agent execution: {e}")
+                raise
 
         execution_time = time.time() - start_time
 
@@ -982,6 +943,31 @@ def _execute_nano_agent(
             execution_time_seconds=execution_time,
             permissions_used=permissions,
         )
+
+        # Trigger post-agent complete hook if available
+        if HOOKS_AVAILABLE:
+            try:
+                hook_manager = get_hook_manager()
+                event_data = HookEventData(
+                    event="post_agent_complete",
+                    timestamp=datetime.now().isoformat(),
+                    context=hook_manager.context,
+                    working_dir=os.getcwd(),
+                    model=request.model,
+                    provider=request.provider,
+                    prompt=request.agentic_prompt,
+                    agent_response=final_output,  # Use agent_response instead of result
+                    execution_time=execution_time,
+                    token_usage=metadata.get("token_usage"),
+                )
+
+                # For post-completion, don't wait for non-blocking hooks like bell sounds
+                # They can run in the background while user sees the response
+                hook_manager.trigger_hook_sync(
+                    HookEvent.POST_AGENT_COMPLETE, event_data, wait_for_completion=False
+                )
+            except Exception as e:
+                logger.warning(f"Error in post-agent hook: {e}")
 
         logger.info(
             f"Agent SDK execution completed successfully in {execution_time:.2f} seconds"
@@ -1043,7 +1029,27 @@ def _execute_nano_agent(
             # In dev mode, return detailed error
             error_msg = f"Model behavior error: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            
+
+            # Trigger agent error hook if available
+            if HOOKS_AVAILABLE:
+                try:
+                    hook_manager = get_hook_manager()
+                    event_data = HookEventData(
+                        event="agent_error",
+                        timestamp=datetime.now().isoformat(),
+                        context=hook_manager.context,
+                        working_dir=os.getcwd(),
+                        model=request.model,
+                        provider=request.provider,
+                        prompt=request.agentic_prompt,
+                        error=error_msg,
+                        execution_time=execution_time,
+                    )
+
+                    hook_manager.trigger_hook_sync(HookEvent.AGENT_ERROR, event_data)
+                except Exception as hook_error:
+                    logger.warning(f"Error in agent error hook: {hook_error}")
+
             return PromptNanoAgentResponse(
                 success=False,
                 error=error_msg,
@@ -1067,7 +1073,27 @@ def _execute_nano_agent(
         if "Max turns" in str(e) or "MaxTurnsExceeded" in type(e).__name__:
             error_msg = f"Maximum tool calls ({max_turns}) reached. The agent needs more iterations to complete the task."
             logger.info(f"Agent reached max tool calls limit: {max_turns}")
-            
+
+            # Trigger agent error hook if available
+            if HOOKS_AVAILABLE:
+                try:
+                    hook_manager = get_hook_manager()
+                    event_data = HookEventData(
+                        event="agent_error",
+                        timestamp=datetime.now().isoformat(),
+                        context=hook_manager.context,
+                        working_dir=os.getcwd(),
+                        model=request.model,
+                        provider=request.provider,
+                        prompt=request.agentic_prompt,
+                        error=error_msg,
+                        execution_time=execution_time,
+                    )
+
+                    hook_manager.trigger_hook_sync(HookEvent.AGENT_ERROR, event_data)
+                except Exception as hook_error:
+                    logger.warning(f"Error in agent error hook: {hook_error}")
+
             return PromptNanoAgentResponse(
                 success=False,
                 error=error_msg,
@@ -1085,6 +1111,26 @@ def _execute_nano_agent(
         error_msg = f"Agent SDK execution failed: {str(e)}"
         logger.error(error_msg, exc_info=True)
 
+        # Trigger agent error hook if available
+        if HOOKS_AVAILABLE:
+            try:
+                hook_manager = get_hook_manager()
+                event_data = HookEventData(
+                    event="agent_error",
+                    timestamp=datetime.now().isoformat(),
+                    context=hook_manager.context,
+                    working_dir=os.getcwd(),
+                    model=request.model,
+                    provider=request.provider,
+                    prompt=request.agentic_prompt,
+                    error=error_msg,
+                    execution_time=execution_time,
+                )
+
+                hook_manager.trigger_hook_sync(HookEvent.AGENT_ERROR, event_data)
+            except Exception as hook_error:
+                logger.warning(f"Error in agent error hook: {hook_error}")
+
         return PromptNanoAgentResponse(
             success=False,
             error=error_msg,
@@ -1096,6 +1142,11 @@ def _execute_nano_agent(
             },
             execution_time_seconds=execution_time,
         )
+    finally:
+        # Clean up HTTP client if it exists
+        # We skip this for now as it causes more problems
+        # The HTTP client will be garbage collected eventually
+        pass
 
 
 async def prompt_nano_agent(
