@@ -41,7 +41,7 @@ from .modules.session_manager import SessionManager
 try:
     from . import __version__
 except ImportError:
-    __version__ = "0.3.0"  # Fallback version
+    __version__ = "0.3.1"  # Fallback version
 
 app = typer.Typer()
 console = Console()
