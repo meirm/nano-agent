@@ -433,7 +433,7 @@ class InteractiveSession:
         if self._handle_shell_command(command):
             return True
 
-        # Check for @agent switching - but just pass it to coordinator
+        # Check for @agent switching
         if command.startswith("@"):
             agent_name = command[1:].strip()
             if not agent_name:
@@ -441,9 +441,13 @@ class InteractiveSession:
                 self.agent_loader.display_agents_table()
                 return True
             else:
-                # Let coordinator handle agent switching
-                # Just return false to pass the @agent command to coordinator
-                return False
+                # Switch agent locally
+                if self.agent_loader.switch_agent(agent_name):
+                    console.print(f"[green]✓ Switched to agent: {agent_name}[/green]")
+                else:
+                    console.print(f"[yellow]Agent '{agent_name}' not found[/yellow]")
+                    console.print("[dim]Use '@' or '/agents' to see available agents[/dim]")
+                return True
 
         cmd = command.lower().strip()
 
@@ -893,6 +897,9 @@ class InteractiveSession:
                     agentic_prompt=user_input,
                     model=self.model,
                     provider=self.provider,
+                    agent_name=self.agent_loader.current_agent.name
+                    if self.agent_loader.current_agent
+                    else None,
                     api_base=self.api_base,
                     api_key=self.api_key,
                     chat_history=self.chat_history
