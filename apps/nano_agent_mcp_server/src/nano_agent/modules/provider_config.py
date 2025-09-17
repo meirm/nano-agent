@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 class ProviderConfig:
     """Configuration for different model providers."""
 
+    # Track created clients for cleanup
+    _active_clients = []
+
     @staticmethod
     def get_model_settings(
         model: str, provider: str, base_settings: dict
@@ -99,6 +102,7 @@ class ProviderConfig:
                     base_url=api_base if api_base else None,
                     api_key=api_key if api_key else os.getenv("OPENAI_API_KEY"),
                 )
+                ProviderConfig._active_clients.append(openai_client)
                 return Agent(
                     name=name,
                     instructions=instructions,
@@ -125,6 +129,7 @@ class ProviderConfig:
                 base_url=api_base if api_base else "https://api.anthropic.com/v1/",
                 api_key=api_key if api_key else os.getenv("ANTHROPIC_API_KEY"),
             )
+            ProviderConfig._active_clients.append(anthropic_client)
             return Agent(
                 name=name,
                 instructions=instructions,
@@ -156,6 +161,7 @@ class ProviderConfig:
 
             logger.debug(f"Ollama URL: {ollama_url}")
             ollama_client = AsyncOpenAI(base_url=ollama_url, api_key=ollama_api_key)
+            ProviderConfig._active_clients.append(ollama_client)
             return Agent(
                 name=name,
                 instructions=instructions,
@@ -187,6 +193,7 @@ class ProviderConfig:
             lmstudio_client = AsyncOpenAI(
                 base_url=lmstudio_url, api_key=lmstudio_api_key
             )
+            ProviderConfig._active_clients.append(lmstudio_client)
             return Agent(
                 name=name,
                 instructions=instructions,
@@ -237,6 +244,38 @@ class ProviderConfig:
             )
         else:
             raise ValueError(f"Unsupported provider: {provider}")
+
+    @staticmethod
+    def cleanup_clients() -> None:
+        """Clean up all active HTTP clients.
+
+        This should be called before the event loop is closed to prevent
+        RuntimeError exceptions from unclosed HTTP connections.
+        """
+        import asyncio
+
+        async def close_clients():
+            """Close all active clients asynchronously."""
+            for client in ProviderConfig._active_clients:
+                try:
+                    await client.close()
+                except Exception as e:
+                    logger.debug(f"Error closing client: {e}")
+            ProviderConfig._active_clients.clear()
+
+        # Try to close clients if there's an event loop
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Schedule the cleanup for later
+                loop.create_task(close_clients())
+            else:
+                # Run it now
+                loop.run_until_complete(close_clients())
+        except RuntimeError:
+            # No event loop or it's closed, can't clean up async clients
+            logger.debug("Could not cleanup HTTP clients - no event loop available")
+            ProviderConfig._active_clients.clear()
 
     @staticmethod
     def setup_provider(provider: str, enable_trace: bool = False) -> None:

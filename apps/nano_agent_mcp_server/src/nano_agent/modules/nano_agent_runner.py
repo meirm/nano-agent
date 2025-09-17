@@ -41,5 +41,12 @@ def cleanup_nano_agent():
     except:
         pass
 
+    # Clean up HTTP clients
+    try:
+        from .provider_config import ProviderConfig
+        ProviderConfig.cleanup_clients()
+    except:
+        pass
+
     # Any other cleanup needed
     logger.debug("Nano agent cleanup completed")

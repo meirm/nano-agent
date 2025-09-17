@@ -658,6 +658,13 @@ async def _execute_nano_agent_async(
             },
             execution_time_seconds=execution_time,
         )
+    finally:
+        # Clean up HTTP clients to prevent event loop errors
+        try:
+            from .provider_config import ProviderConfig as PC
+            PC.cleanup_clients()
+        except Exception as e:
+            logger.debug(f"Error during client cleanup in async function: {e}")
 
 
 def _execute_nano_agent(
@@ -1143,10 +1150,12 @@ def _execute_nano_agent(
             execution_time_seconds=execution_time,
         )
     finally:
-        # Clean up HTTP client if it exists
-        # We skip this for now as it causes more problems
-        # The HTTP client will be garbage collected eventually
-        pass
+        # Clean up HTTP clients to prevent event loop errors
+        try:
+            from .provider_config import ProviderConfig as PC
+            PC.cleanup_clients()
+        except Exception as e:
+            logger.debug(f"Error during client cleanup: {e}")
 
 
 async def prompt_nano_agent(
