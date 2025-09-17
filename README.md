@@ -269,26 +269,9 @@ nano-cli run "Task" -f markdown # Formatted markdown output
 
 ### 🔗 Hook System for Automation
 
-**Customize agent behavior with hooks**:
-```bash
-# Setup example hooks
-nano-cli hooks install
+**Customize agent behavior with hooks** - Run custom scripts at specific execution points for validation, monitoring, security checks, and logging.
 
-# Available hooks:
-# - Pre-execution: Filter/modify prompts before processing
-# - Post-execution: Log results, send notifications
-# - Security checks: Validate operations before execution
-# - Performance monitoring: Track execution metrics
-```
-
-**Example hook configuration** (`~/.nano-cli/hooks.json`):
-```json
-{
-  "pre_execution": ["security_check.py", "prompt_filter.py"],
-  "post_execution": ["log_results.sh", "notify.py"],
-  "on_error": ["error_handler.py"]
-}
-```
+📖 **[Complete Hook Documentation](HOOKS.md)** - Setup, configuration, examples, and best practices
 
 ### ⚙️ Flexible Configuration System
 
