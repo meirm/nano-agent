@@ -38,19 +38,19 @@ uv run pytest tests/nano_agent/modules/test_nano_agent.py -v
 uv run nano-cli test-tools
 
 # Test with different providers
-uv run nano-cli run "test prompt" --model gpt-5-mini
-uv run nano-cli run "test prompt" --model claude-3-haiku-20240307 --provider anthropic
-uv run nano-cli run "test prompt" --model gpt-oss:20b --provider ollama
+uv run nano-cli -p "test prompt" --model gpt-5-mini
+uv run nano-cli -p "test prompt" --model claude-3-haiku-20240307 --provider anthropic
+uv run nano-cli -p "test prompt" --model gpt-oss:20b --provider ollama
 ```
 
 ### Development Workflow
 ```bash
-# Run CLI directly for testing
+# Run CLI directly for testing (use -p/--prompt flag)
 cd apps/nano_agent_mcp_server
-uv run nano-cli run "Your prompt here" --verbose
+uv run nano-cli -p "Your prompt here" --verbose
 
 # Use command files (NEW)
-uv run nano-cli run '/summarize "content to summarize"'
+uv run nano-cli -p '/summarize "content to summarize"'
 uv run nano-cli commands list
 uv run nano-cli commands create new-command
 
@@ -123,7 +123,7 @@ Same environment variables as above, plus optional config file for persistent se
 1. Update `modules/constants.py` with model definition
 2. Configure provider in `modules/provider_config.py`
 3. Create sub-agent in `.claude/agents/` if needed
-4. Test with `uv run nano-cli run "test" --model <model> --provider <provider>`
+4. Test with `uv run nano-cli -p "test" --model <model> --provider <provider>`
 
 ### Tool Development
 Tools are in `modules/nano_agent_tools.py` with:

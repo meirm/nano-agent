@@ -44,27 +44,31 @@ Use nano-agent in read-only mode to audit security vulnerabilities
 
 **Via CLI**:
 ```bash
-# Interactive mode with rich terminal UI
+# Interactive mode with rich terminal UI (default when no arguments)
+nano-cli
 nano-cli interactive --provider ollama --model gpt-oss:20b
 
-# Quick test with any model
-nano-cli run "Create a hello world script" --model gpt-5-mini
+# Quick test with any model using -p/--prompt flag
+nano-cli -p "Create a hello world script" --model gpt-5-mini
 
 # Safe exploration with read-only mode
-nano-cli run "Analyze this codebase" --read-only
+nano-cli -p "Analyze this codebase" --read-only
 
 # Use ANY model from ANY provider
-nano-cli run "Write a function" --model llama3.2:latest --provider ollama
+nano-cli -p "Write a function" --model llama3.2:latest --provider ollama
 
 # List available models
 nano-cli list-models --provider ollama
 
 # Continue conversation with session persistence
-nano-cli run "Add error handling to that function" --continue
+nano-cli -p "Add error handling to that function" --continue
 
 # Use custom commands and agents
-nano-cli run '/analyze "Review this code for security issues"'
-nano-cli run "Explain this code" --agent analyst
+nano-cli -p '/analyze "Review this code for security issues"'
+nano-cli -p "Explain this code" --agent analyst
+
+# Alternative: use 'run' command (equivalent to -p flag)
+nano-cli run "Create a hello world script"
 ```
 
 ## Core Features
@@ -82,16 +86,16 @@ nano-cli run "Explain this code" --agent analyst
 
 ```bash
 # Use well-known models
-nano-cli run "Analyze code" --model gpt-5 --provider openai
-nano-cli run "Analyze code" --model claude-3-haiku --provider anthropic  
+nano-cli -p "Analyze code" --model gpt-5 --provider openai
+nano-cli -p "Analyze code" --model claude-3-haiku --provider anthropic
 
 # Use ANY Ollama model - not limited to a predefined list
-nano-cli run "Analyze code" --model llama3.2:latest --provider ollama
-nano-cli run "Analyze code" --model mistral:7b --provider ollama
-nano-cli run "Analyze code" --model qwen2.5-coder:3b --provider ollama
+nano-cli -p "Analyze code" --model llama3.2:latest --provider ollama
+nano-cli -p "Analyze code" --model mistral:7b --provider ollama
+nano-cli -p "Analyze code" --model qwen2.5-coder:3b --provider ollama
 
 # Configure custom providers in ~/.config/nano-cli/config.yaml
-nano-cli run "Analyze code" --model custom-model --provider my-provider
+nano-cli -p "Analyze code" --model custom-model --provider my-provider
 ```
 
 ### 🔐 Enterprise Security
@@ -123,8 +127,8 @@ result = await prompt_nano_agent_readonly(
 Via CLI:
 ```bash
 # Safe exploration with --read-only flag
-nano-cli run "Audit the codebase for vulnerabilities" --read-only
-nano-cli run "Analyze architecture and create documentation" --read-only
+nano-cli -p "Audit the codebase for vulnerabilities" --read-only
+nano-cli -p "Analyze architecture and create documentation" --read-only
 
 # The agent will only have access to:
 # ✅ read_file, list_directory, get_file_info
@@ -138,13 +142,13 @@ nano-cli run "Analyze architecture and create documentation" --read-only
 **CLI Control**
 ```bash
 # Limit tool calls for safety
-nano-cli run "Analyze project" --max-tool-calls 10
+nano-cli -p "Analyze project" --max-tool-calls 10
 
 # Allow unlimited calls for complex operations
-nano-cli run "Refactor entire codebase" --unlimited-tool-calls
+nano-cli -p "Refactor entire codebase" --unlimited-tool-calls
 
 # Default is 20 tool calls
-nano-cli run "Normal task"  # Uses default limit
+nano-cli -p "Normal task"  # Uses default limit
 ```
 
 **Configuration**
@@ -168,16 +172,16 @@ max_tool_calls: 30  # Increase default limit
 **Persistent Conversations**
 ```bash
 # Start a project
-nano-cli run "Create a Flask API" --new
+nano-cli -p "Create a Flask API" --new
 # Returns: session_abc123
 
 # Continue with context (agent remembers everything)
-nano-cli run "Add user authentication" --continue
-nano-cli run "Add input validation" --continue
-nano-cli run "Write unit tests" --continue
+nano-cli -p "Add user authentication" --continue
+nano-cli -p "Add input validation" --continue
+nano-cli -p "Write unit tests" --continue
 
 # Or use specific session
-nano-cli run "Add logging" --session session_abc123
+nano-cli -p "Add logging" --session session_abc123
 ```
 
 **Session Features**
@@ -247,12 +251,12 @@ nano-cli interactive
 ```bash
 # Create custom command templates
 nano-cli commands create code-review
-nano-cli run '/code-review "src/auth"'
+nano-cli -p '/code-review "src/auth"'
 
 # Use specialized agents
-nano-cli run "Analyze code" --agent analyst
-nano-cli run "Write tests" --agent coder
-nano-cli run "Generate ideas" --agent creative
+nano-cli -p "Analyze code" --agent analyst
+nano-cli -p "Write tests" --agent coder
+nano-cli -p "Generate ideas" --agent creative
 
 # List available commands and agents
 nano-cli commands list
@@ -261,10 +265,10 @@ nano-cli agents list
 
 **Output Formats**
 ```bash
-nano-cli run "Task" -f rich     # Beautiful terminal output (default)
-nano-cli run "Task" -f json     # Structured JSON for scripts
-nano-cli run "Task" -f simple   # Plain text for piping
-nano-cli run "Task" -f markdown # Formatted markdown output
+nano-cli -p "Task" -f rich     # Beautiful terminal output (default)
+nano-cli -p "Task" -f json     # Structured JSON for scripts
+nano-cli -p "Task" -f simple   # Plain text for piping
+nano-cli -p "Task" -f markdown # Formatted markdown output
 ```
 
 ### 🔗 Hook System for Automation
@@ -396,7 +400,7 @@ await prompt_nano_agent(
 ```bash
 # Compare different models on the same task
 for model in gpt-5-mini claude-3-haiku gpt-oss:20b; do
-  nano-cli run "Optimize this function" --model $model
+  nano-cli -p "Optimize this function" --model $model
 done
 ```
 
@@ -516,13 +520,13 @@ model_aliases:
 
 ```bash
 # Use any configured provider
-nano-cli run "Task" --provider my_provider --model custom-model
+nano-cli -p "Task" --provider my_provider --model custom-model
 
 # Models not in known_models still work if allow_unknown_models: true
-nano-cli run "Task" --provider ollama --model any-model-name:tag
+nano-cli -p "Task" --provider ollama --model any-model-name:tag
 
 # Use aliases for convenience
-nano-cli run "Task" --model llama  # Resolves to llama3.2:latest
+nano-cli -p "Task" --model llama  # Resolves to llama3.2:latest
 ```
 
 ## API Reference
@@ -541,13 +545,20 @@ nano-cli run "Task" --model llama  # Resolves to llama3.2:latest
 ### CLI Commands
 
 ```bash
-nano-cli run <prompt>           # Run agent with prompt
-nano-cli run <prompt> --read-only  # Safe exploration mode
-nano-cli run <prompt> --max-tool-calls 10  # Limit tool calls
-nano-cli run <prompt> --unlimited-tool-calls  # No limit on tool calls
+# Primary interface: -p/--prompt flag
+nano-cli -p <prompt>           # Run agent with prompt
+nano-cli -p <prompt> --read-only  # Safe exploration mode
+nano-cli -p <prompt> --max-tool-calls 10  # Limit tool calls
+nano-cli -p <prompt> --unlimited-tool-calls  # No limit on tool calls
+
+# Alternative: use 'run' command (equivalent to -p)
+nano-cli run <prompt>
+
+# Other commands
+nano-cli                        # Start interactive mode (default)
+nano-cli interactive            # Start interactive mode (explicit)
 nano-cli list-models            # List all available models
 nano-cli list-models --provider <name>  # List models for provider
-nano-cli interactive            # Start interactive mode
 nano-cli sessions list          # List sessions
 nano-cli sessions show <id>     # Show session details
 nano-cli commands list          # List command templates

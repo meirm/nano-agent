@@ -21,7 +21,7 @@ Hooks are external scripts that are triggered by specific events during agent ex
 
 2. **Test hooks:**
    ```bash
-   nano-cli run "Create a test file"
+   nano-cli -p "Create a test file"
    # Check logs
    tail -f ~/.nano-cli/logs/*.log
    ```
@@ -250,7 +250,7 @@ Hooks can be configured to run in specific contexts using the `contexts` field.
 
 3. Check for errors in logs:
    ```bash
-   nano-cli run "test" --verbose
+   nano-cli -p "test" --verbose
    ```
 
 ### Hook blocking unexpectedly

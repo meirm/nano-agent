@@ -4,17 +4,20 @@ The nano-cli now supports a command file system similar to Claude Code's `.claud
 
 ## Overview
 
-Commands are markdown files stored in `~/.nano-cli/commands/` that define reusable prompts. When you run `nano-cli run '/command arguments'`, the CLI loads the command file, substitutes your arguments, and executes the resulting prompt.
+Commands are markdown files stored in `~/.nano-cli/commands/` that define reusable prompts. When you run `nano-cli -p '/command arguments'`, the CLI loads the command file, substitutes your arguments, and executes the resulting prompt.
 
 ## Usage
 
 ### Running Commands
 
 ```bash
-# Use /command syntax with the run command
+# Use /command syntax with the -p/--prompt flag
+nano-cli -p '/summarize README.md contents here'
+nano-cli -p '/analyze "$(cat src/main.py)"' --model gpt-5
+nano-cli -p '/explain how async works in Python' --verbose
+
+# Alternative: use 'run' command (equivalent to -p)
 nano-cli run '/summarize README.md contents here'
-nano-cli run '/analyze "$(cat src/main.py)"' --model gpt-5
-nano-cli run '/explain how async works in Python' --verbose
 ```
 
 ### Managing Commands
@@ -110,27 +113,27 @@ The system comes with several pre-built commands:
 
 ### `/summarize` - Generate summaries
 ```bash
-nano-cli run '/summarize "long text to summarize"'
+nano-cli -p '/summarize "long text to summarize"'
 ```
 
 ### `/analyze` - Perform detailed analysis
 ```bash
-nano-cli run '/analyze "$(cat code.py)"'
+nano-cli -p '/analyze "$(cat code.py)"'
 ```
 
 ### `/explain` - Get clear explanations
 ```bash
-nano-cli run '/explain concept or code'
+nano-cli -p '/explain concept or code'
 ```
 
 ### `/refactor` - Suggest code improvements
 ```bash
-nano-cli run '/refactor "messy code here"'
+nano-cli -p '/refactor "messy code here"'
 ```
 
 ### `/test` - Generate test cases
 ```bash
-nano-cli run '/test "function to test"'
+nano-cli -p '/test "function to test"'
 ```
 
 ## Creating Custom Commands
@@ -144,7 +147,7 @@ nano-cli commands create my-task
 
 3. Use your command:
 ```bash
-nano-cli run '/my-task "arguments for your task"'
+nano-cli -p '/my-task "arguments for your task"'
 ```
 
 ## Advanced Usage
@@ -155,23 +158,23 @@ Commands work with all nano-cli options:
 
 ```bash
 # Use Claude model
-nano-cli run '/summarize "text"' --model claude-3-haiku-20240307 --provider anthropic
+nano-cli -p '/summarize "text"' --model claude-3-haiku-20240307 --provider anthropic
 
 # Use local Ollama model
-nano-cli run '/analyze "code"' --model gpt-oss:20b --provider ollama
+nano-cli -p '/analyze "code"' --model gpt-oss:20b --provider ollama
 
 # Verbose output
-nano-cli run '/explain "concept"' --verbose
+nano-cli -p '/explain "concept"' --verbose
 ```
 
 ### Passing File Contents
 
 ```bash
 # Pass file contents as arguments
-nano-cli run "/summarize \"$(cat README.md)\""
+nano-cli -p "/summarize \"$(cat README.md)\""
 
 # Multiple files
-nano-cli run "/analyze \"$(cat src/*.py)\""
+nano-cli -p "/analyze \"$(cat src/*.py)\""
 ```
 
 ### Complex Arguments
@@ -179,7 +182,7 @@ nano-cli run "/analyze \"$(cat src/*.py)\""
 The `$ARGUMENTS` placeholder captures everything after the command name:
 
 ```bash
-nano-cli run '/explain the difference between REST and GraphQL APIs'
+nano-cli -p '/explain the difference between REST and GraphQL APIs'
 # $ARGUMENTS = "the difference between REST and GraphQL APIs"
 ```
 
