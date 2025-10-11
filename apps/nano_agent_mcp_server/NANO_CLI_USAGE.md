@@ -100,23 +100,31 @@ export OLLAMA_API_URL=http://localhost:11434
 ### Running a Simple Prompt
 
 ```bash
-# Using default provider and model
+# Using -p/--prompt flag (recommended)
+nano-cli -p "Create a Python function that calculates fibonacci numbers"
+nano-cli --prompt "Create a Python function that calculates fibonacci numbers"
+
+# Using default provider and model with 'run' command (alternative)
 nano-cli run "Create a Python function that calculates fibonacci numbers"
 
 # Specify provider and model
-nano-cli run "Analyze this codebase" --provider openai --model gpt-5-mini
+nano-cli -p "Analyze this codebase" --provider openai --model gpt-5-mini
 
 # Verbose output for debugging
-nano-cli run "Fix the bug in main.py" --verbose
+nano-cli -p "Fix the bug in main.py" --verbose
 ```
 
 ### Interactive Mode
 
 ```bash
-# Start interactive session
+# Start interactive session (default when called without arguments)
+nano-cli
+
+# Or explicitly with 'interactive' command
 nano-cli interactive
 
 # With specific model
+nano-cli --provider anthropic --model claude-3-haiku-20240307
 nano-cli interactive --provider anthropic --model claude-3-haiku-20240307
 ```
 
@@ -125,14 +133,37 @@ nano-cli interactive --provider anthropic --model claude-3-haiku-20240307
 For safe exploration without file modifications:
 
 ```bash
-nano-cli run "Analyze the security of this codebase" --read-only
+nano-cli -p "Analyze the security of this codebase" --read-only
 ```
 
 ## Commands
 
 ### Core Commands
 
-#### `run` - Execute a single prompt
+#### Direct Prompt Execution (Main Entry Point)
+
+```bash
+# Using -p/--prompt flag (recommended approach)
+nano-cli -p [PROMPT] [OPTIONS]
+nano-cli --prompt [PROMPT] [OPTIONS]
+
+# Examples:
+nano-cli -p "Create a README file"
+nano-cli -p "Analyze all Python files" --read-only
+nano-cli -p "Fix type errors" --model gpt-5 --verbose
+```
+
+Options:
+- `--provider`: LLM provider (openai, anthropic, ollama)
+- `--model`: Model name
+- `--read-only`: Prevent file modifications
+- `--verbose`: Show detailed output
+- `--output-format`: Output format (simple, markdown, json, rich)
+- `--session`, `-s`: Use specific session ID
+- `--continue`, `-c`: Continue last session
+- `--new`, `-n`: Force new session
+
+#### `run` - Execute a single prompt (Alternative)
 
 ```bash
 nano-cli run [PROMPT] [OPTIONS]
@@ -143,22 +174,19 @@ nano-cli run "Analyze all Python files" --read-only
 nano-cli run "Fix type errors" --model gpt-5 --verbose
 ```
 
-Options:
-- `--provider`: LLM provider (openai, anthropic, ollama)
-- `--model`: Model name
-- `--read-only`: Prevent file modifications
-- `--verbose`: Show detailed output
-- `--output-format`: Output format (simple, markdown, json, rich)
-- `--session-id`: Continue existing session
-- `--clear-history`: Clear session history
+**Note:** The `run` command is equivalent to using `-p/--prompt`. Use whichever you prefer.
 
-#### `interactive` - Start interactive session
+#### Interactive Mode (Default)
 
 ```bash
+# Start interactive session (runs when no arguments provided)
+nano-cli
+
+# Or explicitly with 'interactive' command
 nano-cli interactive [OPTIONS]
 
 # Examples:
-nano-cli interactive
+nano-cli --model gpt-oss:120b --provider ollama
 nano-cli interactive --model gpt-oss:120b --provider ollama
 ```
 
@@ -214,11 +242,14 @@ nano-cli commands edit my-command
 #### Running Command Files
 
 ```bash
-# Run a command file
-nano-cli run '/summarize "content to summarize"'
+# Run a command file using -p flag
+nano-cli -p '/summarize "content to summarize"'
 
 # Command files support parameters
-nano-cli run '/analyze --depth deep --focus security'
+nano-cli -p '/analyze --depth deep --focus security'
+
+# Alternative: use run command
+nano-cli run '/summarize "content to summarize"'
 ```
 
 ## Provider and Model Selection
@@ -227,27 +258,27 @@ nano-cli run '/analyze --depth deep --focus security'
 
 ```bash
 # GPT-5 models
-nano-cli run "task" --provider openai --model gpt-5-nano    # Fastest, cheapest
-nano-cli run "task" --provider openai --model gpt-5-mini    # Balanced
-nano-cli run "task" --provider openai --model gpt-5         # Most capable
-nano-cli run "task" --provider openai --model gpt-4o        # Legacy
+nano-cli -p "task" --provider openai --model gpt-5-nano    # Fastest, cheapest
+nano-cli -p "task" --provider openai --model gpt-5-mini    # Balanced
+nano-cli -p "task" --provider openai --model gpt-5         # Most capable
+nano-cli -p "task" --provider openai --model gpt-4o        # Legacy
 ```
 
 ### Anthropic Models
 
 ```bash
 # Claude models
-nano-cli run "task" --provider anthropic --model claude-3-haiku-20240307
-nano-cli run "task" --provider anthropic --model claude-opus-4-20250514
+nano-cli -p "task" --provider anthropic --model claude-3-haiku-20240307
+nano-cli -p "task" --provider anthropic --model claude-opus-4-20250514
 ```
 
 ### Ollama (Local Models)
 
 ```bash
 # Local models via Ollama
-nano-cli run "task" --provider ollama --model gpt-oss:20b
-nano-cli run "task" --provider ollama --model gpt-oss:120b
-nano-cli run "task" --provider ollama --model mistral-small3.2
+nano-cli -p "task" --provider ollama --model gpt-oss:20b
+nano-cli -p "task" --provider ollama --model gpt-oss:120b
+nano-cli -p "task" --provider ollama --model mistral-small3.2
 ```
 
 ## Command Files
@@ -273,7 +304,7 @@ Depth: {depth}
 2. Use the command:
 
 ```bash
-nano-cli run '/review-code --focus security --depth detailed'
+nano-cli -p '/review-code --focus security --depth detailed'
 ```
 
 ### Command File Features
@@ -291,13 +322,13 @@ Sessions maintain conversation context across multiple prompts:
 
 ```bash
 # Start new session
-nano-cli run "Analyze main.py" --session-id my-analysis
+nano-cli -p "Analyze main.py" --session my-analysis
 
 # Continue session
-nano-cli run "Now check for security issues" --session-id my-analysis
+nano-cli -p "Now check for security issues" --session my-analysis
 
-# Clear session history
-nano-cli run "Start fresh analysis" --session-id my-analysis --clear-history
+# Continue last session automatically
+nano-cli -p "What were the main issues?" --continue
 ```
 
 ### Session Storage
@@ -309,7 +340,7 @@ Sessions are stored in `~/.nano-cli/sessions/` and persist across CLI invocation
 ### Simple (Default)
 
 ```bash
-nano-cli run "task" --output-format simple
+nano-cli -p "task" --output-format simple
 ```
 
 Clean, minimal output suitable for terminal display.
@@ -317,7 +348,7 @@ Clean, minimal output suitable for terminal display.
 ### Markdown
 
 ```bash
-nano-cli run "task" --output-format markdown
+nano-cli -p "task" --output-format markdown
 ```
 
 Formatted markdown with headers and code blocks.
@@ -325,7 +356,7 @@ Formatted markdown with headers and code blocks.
 ### JSON
 
 ```bash
-nano-cli run "task" --output-format json
+nano-cli -p "task" --output-format json
 ```
 
 Structured JSON output for programmatic use.
@@ -333,44 +364,12 @@ Structured JSON output for programmatic use.
 ### Rich
 
 ```bash
-nano-cli run "task" --output-format rich
+nano-cli -p "task" --output-format rich
 ```
 
 Enhanced terminal output with colors and formatting (requires rich library).
 
 ## Advanced Features
-
-### Tool Restrictions
-
-Control which tools the agent can use:
-
-```bash
-# Allow only specific tools
-nano-cli run "Analyze files" --allowed-tools read_file,list_directory
-
-# Block specific tools
-nano-cli run "Review code" --blocked-tools write_file,edit_file
-```
-
-### Path Restrictions
-
-Control file system access:
-
-```bash
-# Allow only specific paths
-nano-cli run "Analyze" --allowed-paths ./src,./tests
-
-# Block specific paths
-nano-cli run "Process files" --blocked-paths /etc,~/.ssh
-```
-
-### Environment Variables for Agents
-
-Pass environment variables to the agent:
-
-```bash
-nano-cli run "Run tests" --env API_KEY=test-key,DEBUG=true
-```
 
 ### Temperature Control
 
@@ -378,10 +377,10 @@ Adjust response randomness:
 
 ```bash
 # More deterministic (0.0)
-nano-cli run "Generate code" --temperature 0.0
+nano-cli -p "Generate code" --temperature 0.0
 
 # More creative (2.0)
-nano-cli run "Write story" --temperature 1.5
+nano-cli -p "Write story" --temperature 1.5
 ```
 
 ### Token Limits
@@ -389,7 +388,19 @@ nano-cli run "Write story" --temperature 1.5
 Control response length:
 
 ```bash
-nano-cli run "Summarize" --max-tokens 500
+nano-cli -p "Summarize" --max-tokens 500
+```
+
+### Tool Call Limits
+
+Control agent iteration limits:
+
+```bash
+# Limit tool calls
+nano-cli -p "Complex task" --max-tool-calls 10
+
+# Allow unlimited (use with caution)
+nano-cli -p "Complex task" --unlimited-tool-calls
 ```
 
 ## Troubleshooting
@@ -440,10 +451,13 @@ Enable verbose output for debugging:
 
 ```bash
 # Verbose output
-nano-cli run "task" --verbose
+nano-cli -p "task" --verbose
 
 # With specific provider
-nano-cli run "task" --verbose --provider ollama --model gpt-oss:20b
+nano-cli -p "task" --verbose --provider ollama --model gpt-oss:20b
+
+# Development mode with detailed errors
+nano-cli -p "task" --dev
 ```
 
 ### Log Files
@@ -456,40 +470,40 @@ Logs are stored in `~/.nano-cli/logs/` for debugging purposes.
 
 ```bash
 # Analyze codebase for issues
-nano-cli run "Analyze this Python project for code quality issues" --read-only
+nano-cli -p "Analyze this Python project for code quality issues" --read-only
 
 # Security audit
-nano-cli run "Perform a security audit on all Python files" --read-only
+nano-cli -p "Perform a security audit on all Python files" --read-only
 ```
 
 ### Code Generation
 
 ```bash
 # Create a new feature
-nano-cli run "Create a REST API endpoint for user authentication"
+nano-cli -p "Create a REST API endpoint for user authentication"
 
 # Generate tests
-nano-cli run "Write unit tests for the auth module"
+nano-cli -p "Write unit tests for the auth module"
 ```
 
 ### File Operations
 
 ```bash
 # Organize files
-nano-cli run "Organize Python files into proper module structure"
+nano-cli -p "Organize Python files into proper module structure"
 
 # Search and replace
-nano-cli run "Replace all TODO comments with proper documentation"
+nano-cli -p "Replace all TODO comments with proper documentation"
 ```
 
 ### System Commands
 
 ```bash
 # Run system diagnostics
-nano-cli run "Check system dependencies and create a report"
+nano-cli -p "Check system dependencies and create a report"
 
 # Automation
-nano-cli run "Create a bash script to automate the build process"
+nano-cli -p "Create a bash script to automate the build process"
 ```
 
 ## Best Practices

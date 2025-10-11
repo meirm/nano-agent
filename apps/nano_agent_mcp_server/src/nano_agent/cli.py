@@ -55,132 +55,29 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
-    version: Optional[bool] = typer.Option(
+    ctx: typer.Context,
+    _version: Optional[bool] = typer.Option(
         None,
         "--version",
         help="Show version and exit",
         callback=version_callback,
         is_eager=True,
-    )
-):
-    """Nano Agent CLI - Autonomous AI agent with file system capabilities."""
-    pass
-
-
-def get_log_console(verbose: bool = False) -> Console:
-    """Get the appropriate console for logging messages.
-
-    Args:
-        verbose: If True, returns stderr console. If False, returns stdout console.
-
-    Returns:
-        Console instance for logging output
-    """
-    return console_stderr if verbose else console
-
-
-def check_api_key(provider: str = None):
-    """Check if required API key is set based on provider."""
-    # If no provider specified, try to determine from context
-    if provider is None:
-        provider = DEFAULT_PROVIDER
-
-    # Only check API keys for providers that require them
-    if provider == "openai":
-        if not os.getenv("OPENAI_API_KEY"):
-            console_stderr.print(
-                "[red]Error: OPENAI_API_KEY environment variable is not set[/red]"
-            )
-            console_stderr.print(
-                "Please set it with: export OPENAI_API_KEY=your-api-key"
-            )
-            sys.exit(1)
-    elif provider == "anthropic":
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            console_stderr.print(
-                "[red]Error: ANTHROPIC_API_KEY environment variable is not set[/red]"
-            )
-            console_stderr.print(
-                "Please set it with: export ANTHROPIC_API_KEY=your-api-key"
-            )
-            sys.exit(1)
-    # Ollama, ollama-native, and lmstudio don't require API keys by default
-    # They may use them for authentication but it's optional
-
-
-@app.command()
-def test_tools():
-    """Test individual tool functions."""
-    # Import the raw tool functions from nano_agent_tools
-    from .modules.nano_agent_tools import (edit_file_raw, get_file_info_raw,
-                                           list_directory_raw, read_file_raw,
-                                           write_file_raw, grep_search_raw, search_files_raw, bash_command_raw)
-
-    console.print(Panel("[cyan]Testing Nano Agent Tools[/cyan]", expand=False))
-
-    # Test list_directory (call the raw function, not the FunctionTool)
-    console.print("\n[yellow]1. Testing list_directory:[/yellow]")
-    result = list_directory_raw(".")
-    console.print(result[:500] + "..." if len(result) > 500 else result)
-
-    # Test write_file
-    console.print("\n[yellow]2. Testing write_file:[/yellow]")
-    test_file = "test_nano_agent.txt"
-    result = write_file_raw(
-        test_file, "Hello from Nano Agent CLI!\nThis is line 2\nThis is line 3"
-    )
-    console.print(result)
-
-    # Test read_file
-    console.print("\n[yellow]3. Testing read_file:[/yellow]")
-    result = read_file_raw(test_file)
-    console.print(f"Content: {result}")
-
-    # Test grep_search
-    console.print("\n[yellow]4. Testing grep_search:[/yellow]")
-    result = grep_search_raw("This is line 2", "*.txt")
-    console.print(f"Search result: {result}")
-
-    # Test search_files
-    console.print("\n[yellow]5. Testing search_files:[/yellow]")
-    result = search_files_raw("test_nano_agent")
-    console.print(f"Search result: {result}")
-
-    # Test bash_command
-    console.print("\n[yellow]6. Testing bash_command:[/yellow]")
-    result = bash_command_raw("ls -l")
-    console.print(f"Command result: {result}")
-
-    # Test edit_file
-    console.print("\n[yellow]4. Testing edit_file:[/yellow]")
-    result = edit_file_raw(test_file, "This is line 2", "This is the EDITED line 2")
-    console.print(f"Edit result: {result}")
-    result = read_file_raw(test_file)
-    console.print(f"Content after edit: {result}")
-
-    # Test get_file_info
-    console.print("\n[yellow]5. Testing get_file_info:[/yellow]")
-    result = get_file_info_raw(test_file)
-    info = json.loads(result)
-    console.print(json.dumps(info, indent=2))
-
-    # Clean up
-    Path(test_file).unlink(missing_ok=True)
-    console.print("\n[green]✓ All tool tests completed successfully![/green]")
-
-
-@app.command()
-def run(
-    prompt: str,
-    model: str = typer.Option(None, help="Model to use"),
-    provider: str = typer.Option(None, help="Provider to use"),
-    agent: str = typer.Option(None, help="Agent personality to use"),
-    api_base: str = typer.Option(
+    ),
+    prompt: Optional[str] = typer.Option(
+        None,
+        "-p",
+        "--prompt",
+        help="Run a prompt directly (replaces 'nano-cli run')",
+    ),
+    model: Optional[str] = typer.Option(None, help="Model to use"),
+    provider: Optional[str] = typer.Option(None, help="Provider to use"),
+    agent: Optional[str] = typer.Option(None, help="Agent personality to use"),
+    api_base: Optional[str] = typer.Option(
         None, help="API base URL (overrides environment variables)"
     ),
-    api_key: str = typer.Option(None, help="API key (overrides environment variables)"),
+    api_key: Optional[str] = typer.Option(None, help="API key (overrides environment variables)"),
     verbose: bool = typer.Option(False, help="Show detailed output"),
     read_only: bool = typer.Option(
         False, "--read-only", help="Disable file system modifications (safe exploration mode)"
@@ -195,14 +92,14 @@ def run(
     continue_session: bool = typer.Option(
         False, "--continue", "-c", help="Continue the last session"
     ),
-    session: str = typer.Option(
+    session: Optional[str] = typer.Option(
         None, "--session", "-s", help="Use a specific session ID"
     ),
     new_session: bool = typer.Option(False, "--new", "-n", help="Force a new session"),
-    temperature: float = typer.Option(
+    temperature: Optional[float] = typer.Option(
         None, "--temperature", "-t", help="Model temperature (0.0-2.0)"
     ),
-    max_tokens: int = typer.Option(
+    max_tokens: Optional[int] = typer.Option(
         None, "--max-tokens", help="Maximum response tokens"
     ),
     save: bool = typer.Option(
@@ -234,8 +131,94 @@ def run(
         "--dev",
         help="Development mode - show detailed error messages for debugging",
     ),
+    simple: bool = typer.Option(False, help="Use simple mode without autocompletion"),
 ):
-    """Run the nano agent with a prompt. Supports /command syntax for command files."""
+    """Nano Agent CLI - Autonomous AI agent with file system capabilities.
+
+    By default, enters interactive mode. Use -p/--prompt to run a single prompt.
+    """
+    # If a subcommand was invoked, let it handle execution
+    if ctx.invoked_subcommand is not None:
+        return
+
+    # If prompt is provided, run it directly (like 'nano-cli run')
+    if prompt is not None:
+        _run_prompt(
+            prompt=prompt,
+            model=model,
+            provider=provider,
+            agent=agent,
+            api_base=api_base,
+            api_key=api_key,
+            verbose=verbose,
+            read_only=read_only,
+            max_tool_calls=max_tool_calls,
+            unlimited_tool_calls=unlimited_tool_calls,
+            continue_session=continue_session,
+            session=session,
+            new_session=new_session,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            save=save,
+            enable_trace=enable_trace,
+            billing=billing,
+            output_format=output_format,
+            output_thinking=output_thinking,
+            panel_width=panel_width,
+            dev=dev,
+        )
+    else:
+        # No prompt and no subcommand - enter interactive mode
+        _run_interactive_default(
+            model=model,
+            provider=provider,
+            agent=agent,
+            api_base=api_base,
+            api_key=api_key,
+            simple=simple,
+            enable_trace=enable_trace,
+            verbose=verbose,
+            read_only=read_only,
+        )
+
+
+def get_log_console(verbose: bool = False) -> Console:
+    """Get the appropriate console for logging messages.
+
+    Args:
+        verbose: If True, returns stderr console. If False, returns stdout console.
+
+    Returns:
+        Console instance for logging output
+    """
+    return console_stderr if verbose else console
+
+
+def _run_prompt(
+    prompt: str,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
+    agent: Optional[str] = None,
+    api_base: Optional[str] = None,
+    api_key: Optional[str] = None,
+    verbose: bool = False,
+    read_only: bool = False,
+    max_tool_calls: Optional[int] = None,
+    unlimited_tool_calls: bool = False,
+    continue_session: bool = False,
+    session: Optional[str] = None,
+    new_session: bool = False,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    save: bool = True,
+    enable_trace: bool = False,
+    billing: bool = False,
+    output_format: str = "simple",
+    output_thinking: bool = False,
+    panel_width: Optional[int] = None,
+    dev: bool = False,
+):
+    """Internal function to run a prompt (shared by main callback and run command)."""
     # Determine provider first before checking API key
     if provider is None:
         config_file = Path.home() / ".nano-cli" / "config.json"
@@ -476,6 +459,266 @@ def run(
             )
 
 
+def _run_interactive_default(
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
+    agent: Optional[str] = None,
+    api_base: Optional[str] = None,
+    api_key: Optional[str] = None,
+    simple: bool = False,
+    enable_trace: bool = False,
+    verbose: bool = False,
+    read_only: bool = False,
+):
+    """Run interactive mode (internal helper for main callback)."""
+    # Determine provider first before checking API key
+    if provider is None:
+        config_file = Path.home() / ".nano-cli" / "config.json"
+        if config_file.exists():
+            try:
+                with open(config_file, "r") as f:
+                    config = json.load(f)
+                    provider = config.get("default_provider", DEFAULT_PROVIDER)
+            except Exception:
+                provider = DEFAULT_PROVIDER
+        else:
+            provider = DEFAULT_PROVIDER
+
+    check_api_key(provider)
+
+    # Load config defaults if not specified
+    config_file = Path.home() / ".nano-cli" / "config.json"
+    if config_file.exists():
+        try:
+            with open(config_file, "r") as f:
+                config = json.load(f)
+                if model is None:
+                    model = config.get("default_model", DEFAULT_MODEL)
+                if provider is None:
+                    provider = config.get("default_provider", DEFAULT_PROVIDER)
+                if agent is None:
+                    agent = config.get("default_agent")
+        except Exception:
+            pass
+
+    # Final fallbacks
+    if model is None:
+        model = DEFAULT_MODEL
+    if provider is None:
+        provider = DEFAULT_PROVIDER
+
+    # Use simple mode if requested or if prompt_toolkit is not available
+    if simple:
+        _run_simple_interactive(model, provider, verbose, api_base, api_key, read_only)
+    else:
+        try:
+            from .modules.interactive_mode import InteractiveSession
+
+            session = InteractiveSession(
+                initial_model=model,
+                initial_provider=provider,
+                initial_agent=agent,
+                api_base=api_base,
+                api_key=api_key,
+                enable_trace=enable_trace,
+                read_only=read_only,
+            )
+            session.run()
+        except ImportError:
+            (console_stderr if verbose else console).print(
+                "[yellow]Enhanced interactive mode not available. Install with: uv sync[/yellow]"
+            )
+            (console_stderr if verbose else console).print(
+                "[dim]Falling back to simple mode...[/dim]\n"
+            )
+            _run_simple_interactive(model, provider, verbose, api_base, api_key, read_only)
+
+
+def check_api_key(provider: str = None):
+    """Check if required API key is set based on provider."""
+    # If no provider specified, try to determine from context
+    if provider is None:
+        provider = DEFAULT_PROVIDER
+
+    # Only check API keys for providers that require them
+    if provider == "openai":
+        if not os.getenv("OPENAI_API_KEY"):
+            console_stderr.print(
+                "[red]Error: OPENAI_API_KEY environment variable is not set[/red]"
+            )
+            console_stderr.print(
+                "Please set it with: export OPENAI_API_KEY=your-api-key"
+            )
+            sys.exit(1)
+    elif provider == "anthropic":
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            console_stderr.print(
+                "[red]Error: ANTHROPIC_API_KEY environment variable is not set[/red]"
+            )
+            console_stderr.print(
+                "Please set it with: export ANTHROPIC_API_KEY=your-api-key"
+            )
+            sys.exit(1)
+    # Ollama, ollama-native, and lmstudio don't require API keys by default
+    # They may use them for authentication but it's optional
+
+
+@app.command()
+def test_tools():
+    """Test individual tool functions."""
+    # Import the raw tool functions from nano_agent_tools
+    from .modules.nano_agent_tools import (edit_file_raw, get_file_info_raw,
+                                           list_directory_raw, read_file_raw,
+                                           write_file_raw, grep_search_raw, search_files_raw, bash_command_raw)
+
+    console.print(Panel("[cyan]Testing Nano Agent Tools[/cyan]", expand=False))
+
+    # Test list_directory (call the raw function, not the FunctionTool)
+    console.print("\n[yellow]1. Testing list_directory:[/yellow]")
+    result = list_directory_raw(".")
+    console.print(result[:500] + "..." if len(result) > 500 else result)
+
+    # Test write_file
+    console.print("\n[yellow]2. Testing write_file:[/yellow]")
+    test_file = "test_nano_agent.txt"
+    result = write_file_raw(
+        test_file, "Hello from Nano Agent CLI!\nThis is line 2\nThis is line 3"
+    )
+    console.print(result)
+
+    # Test read_file
+    console.print("\n[yellow]3. Testing read_file:[/yellow]")
+    result = read_file_raw(test_file)
+    console.print(f"Content: {result}")
+
+    # Test grep_search
+    console.print("\n[yellow]4. Testing grep_search:[/yellow]")
+    result = grep_search_raw("This is line 2", "*.txt")
+    console.print(f"Search result: {result}")
+
+    # Test search_files
+    console.print("\n[yellow]5. Testing search_files:[/yellow]")
+    result = search_files_raw("test_nano_agent")
+    console.print(f"Search result: {result}")
+
+    # Test bash_command
+    console.print("\n[yellow]6. Testing bash_command:[/yellow]")
+    result = bash_command_raw("ls -l")
+    console.print(f"Command result: {result}")
+
+    # Test edit_file
+    console.print("\n[yellow]4. Testing edit_file:[/yellow]")
+    result = edit_file_raw(test_file, "This is line 2", "This is the EDITED line 2")
+    console.print(f"Edit result: {result}")
+    result = read_file_raw(test_file)
+    console.print(f"Content after edit: {result}")
+
+    # Test get_file_info
+    console.print("\n[yellow]5. Testing get_file_info:[/yellow]")
+    result = get_file_info_raw(test_file)
+    info = json.loads(result)
+    console.print(json.dumps(info, indent=2))
+
+    # Clean up
+    Path(test_file).unlink(missing_ok=True)
+    console.print("\n[green]✓ All tool tests completed successfully![/green]")
+
+
+@app.command(hidden=True)
+def run(
+    prompt: str,
+    model: str = typer.Option(None, help="Model to use"),
+    provider: str = typer.Option(None, help="Provider to use"),
+    agent: str = typer.Option(None, help="Agent personality to use"),
+    api_base: str = typer.Option(
+        None, help="API base URL (overrides environment variables)"
+    ),
+    api_key: str = typer.Option(None, help="API key (overrides environment variables)"),
+    verbose: bool = typer.Option(False, help="Show detailed output"),
+    read_only: bool = typer.Option(
+        False, "--read-only", help="Disable file system modifications (safe exploration mode)"
+    ),
+    max_tool_calls: Optional[int] = typer.Option(
+        None, "--max-tool-calls", help="Maximum number of tool calls allowed (default: 20)"
+    ),
+    unlimited_tool_calls: bool = typer.Option(
+        False, "--unlimited-tool-calls", help="Allow unlimited tool calls (use with caution)"
+    ),
+    # Claude-inspired options
+    continue_session: bool = typer.Option(
+        False, "--continue", "-c", help="Continue the last session"
+    ),
+    session: str = typer.Option(
+        None, "--session", "-s", help="Use a specific session ID"
+    ),
+    new_session: bool = typer.Option(False, "--new", "-n", help="Force a new session"),
+    temperature: float = typer.Option(
+        None, "--temperature", "-t", help="Model temperature (0.0-2.0)"
+    ),
+    max_tokens: int = typer.Option(
+        None, "--max-tokens", help="Maximum response tokens"
+    ),
+    save: bool = typer.Option(
+        True, "--save/--no-save", help="Save conversation to session history"
+    ),
+    enable_trace: bool = typer.Option(
+        False, "--enable-trace", help="Enable OpenAI agent tracing"
+    ),
+    # New output control options
+    billing: bool = typer.Option(
+        False, "--billing", help="Show token usage and cost information"
+    ),
+    output_format: str = typer.Option(
+        "simple",
+        "--output-format",
+        "-f",
+        help="Output format: simple (default), json, or rich",
+    ),
+    output_thinking: bool = typer.Option(
+        False, "--output-thinking", help="Show agent thinking and reasoning text"
+    ),
+    panel_width: Optional[int] = typer.Option(
+        None,
+        "--panel-width",
+        help="Maximum width for rich output panels (default: auto-detect)",
+    ),
+    dev: bool = typer.Option(
+        False,
+        "--dev",
+        help="Development mode - show detailed error messages for debugging",
+    ),
+):
+    """[Alternative] Run the nano agent with a prompt. Supports /command syntax for command files.
+
+    NOTE: The recommended way is to use 'nano-cli -p "prompt"' or 'nano-cli --prompt "prompt"'.
+    This command is kept for backward compatibility.
+    """
+    _run_prompt(
+        prompt=prompt,
+        model=model,
+        provider=provider,
+        agent=agent,
+        api_base=api_base,
+        api_key=api_key,
+        verbose=verbose,
+        read_only=read_only,
+        max_tool_calls=max_tool_calls,
+        unlimited_tool_calls=unlimited_tool_calls,
+        continue_session=continue_session,
+        session=session,
+        new_session=new_session,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        save=save,
+        enable_trace=enable_trace,
+        billing=billing,
+        output_format=output_format,
+        output_thinking=output_thinking,
+        panel_width=panel_width,
+        dev=dev,
+    )
+
+
 @app.command()
 def sessions(
     action: str = typer.Argument("list", help="Action to perform: list, show, clear"),
@@ -550,7 +793,7 @@ def sessions(
         )
 
         # Display conversation history
-        for i, msg in enumerate(session.conversation):
+        for msg in session.conversation:
             if msg.role == "user":
                 console.print("\n[blue]👤 User:[/blue]")
                 console.print(
@@ -601,7 +844,7 @@ def demo():
     console.print("\n[green]✓ Demo completed![/green]")
 
 
-@app.command()
+@app.command(hidden=True)
 def interactive(
     model: str = typer.Option(None, help="Initial model to use"),
     provider: str = typer.Option(None, help="Initial provider to use"),
@@ -621,7 +864,11 @@ def interactive(
         False, "--read-only", help="Disable file system modifications (safe exploration mode)"
     ),
 ):
-    """Run the agent in enhanced interactive mode with autocompletion."""
+    """[Alternative] Run the agent in enhanced interactive mode with autocompletion.
+
+    NOTE: You can also just run 'nano-cli' without any arguments to enter interactive mode.
+    This command allows you to specify initial configuration options.
+    """
     # Determine provider first before checking API key
     if provider is None:
         config_file = Path.home() / ".nano-cli" / "config.json"

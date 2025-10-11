@@ -1,0 +1,3 @@
+# Spec Summary (Lite)
+
+Implement ESC key interruption in nano-cli interactive mode for instant, confirmation-free cancellation of agent operations. Single ESC immediately stops execution with context preservation, while double-tap ESC enables history navigation for editing and re-executing previous prompts. This provides Claude Code-like control over agent interactions without disruptive confirmation dialogs.
