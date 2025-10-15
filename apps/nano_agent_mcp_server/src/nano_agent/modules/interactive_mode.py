@@ -38,7 +38,9 @@ class NanoAgentCompleter(Completer):
 
     def __init__(self):
         """Initialize the completer with commands and models."""
-        self.loader = CommandLoader()
+        from .config_manager import get_config_manager
+        config = get_config_manager().config
+        self.loader = CommandLoader(enable_command_eval=config.enable_command_eval)
         self.commands = []
         self.models = list(AVAILABLE_MODELS.keys())
         # Built-in slash commands (embedded)
@@ -165,7 +167,9 @@ class InteractiveSession:
         self.enable_trace = enable_trace
         self.read_only = read_only
         self.verbose = False
-        self.loader = CommandLoader()
+        from .config_manager import get_config_manager
+        config = get_config_manager().config
+        self.loader = CommandLoader(enable_command_eval=config.enable_command_eval)
         self.agent_loader = AgentLoader()
         self.completer = NanoAgentCompleter()
         self.history_file = Path.home() / ".nano-cli" / "history.txt"

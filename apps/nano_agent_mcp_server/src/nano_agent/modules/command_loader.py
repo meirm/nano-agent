@@ -5,6 +5,9 @@ This module handles loading and managing command files from ~/.nano-cli/commands
 similar to how Claude Code uses .claude/commands/.
 """
 
+import os
+import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -30,18 +33,29 @@ class Command:
 class CommandLoader:
     """Manages loading and executing command files."""
 
-    def __init__(self, commands_dir: Optional[Path] = None):
+    def __init__(self, commands_dir: Optional[Path] = None, enable_command_eval: bool = None):
         """
         Initialize the command loader.
 
         Args:
             commands_dir: Optional custom commands directory.
                          Defaults to ~/.nano-cli/commands/
+            enable_command_eval: Enable shell command evaluation in command files.
+                                If None, checks NANO_CLI_ENABLE_COMMAND_EVAL environment variable.
+                                Defaults to False for security.
         """
         if commands_dir is None:
             self.commands_dir = Path.home() / ".nano-cli" / "commands"
         else:
             self.commands_dir = Path(commands_dir)
+
+        # Security: Command evaluation is disabled by default
+        if enable_command_eval is None:
+            # Check environment variable
+            env_value = os.getenv("NANO_CLI_ENABLE_COMMAND_EVAL", "false").lower()
+            self.enable_command_eval = env_value in ("true", "1", "yes", "on")
+        else:
+            self.enable_command_eval = enable_command_eval
 
         self._commands_cache: Dict[str, Command] = {}
         self._ensure_commands_dir()
@@ -143,6 +157,90 @@ class CommandLoader:
             metadata=metadata,
         )
 
+    def _evaluate_shell_commands(self, text: str) -> str:
+        """
+        Evaluate shell commands in text and replace with their output.
+
+        Detects patterns like $`command` and executes them, replacing with output.
+
+        Args:
+            text: Text containing potential shell command patterns
+
+        Returns:
+            Text with shell commands evaluated and replaced
+
+        Security Note:
+            Command evaluation must be explicitly enabled via enable_command_eval
+            or NANO_CLI_ENABLE_COMMAND_EVAL environment variable.
+
+        Examples:
+            Input: "date: $`date '+%Y-%m-%d'`"
+            Output: "date: 2025-01-15"
+
+            Input: "user: $`whoami`"
+            Output: "user: john"
+        """
+        if not self.enable_command_eval:
+            # Command evaluation is disabled, return text unchanged
+            return text
+
+        # Pattern to match $`command` (but not \$`command` which is escaped)
+        # This regex looks for $` followed by any characters (including empty) until the closing `
+        # and ensures it's not preceded by a backslash
+        pattern = r'(?<!\\)\$`([^`]*)`'
+
+        def evaluate_command(match):
+            """Execute a single shell command and return its output."""
+            command = match.group(1).strip()
+
+            if not command:
+                return "[Error: Empty command]"
+
+            try:
+                # Execute the command with timeout for safety
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,  # 10 second timeout
+                    check=False
+                )
+
+                # Get output (prefer stdout, fall back to stderr if empty)
+                output = result.stdout.strip() if result.stdout.strip() else result.stderr.strip()
+
+                # Handle errors
+                if result.returncode != 0:
+                    if output:
+                        return f"[Error: {output}]"
+                    else:
+                        return f"[Error: Command exited with code {result.returncode}]"
+
+                # Handle empty output
+                if not output:
+                    return "[Empty output]"
+
+                # For multiline output, replace newlines with spaces to keep it inline
+                # Users can use \n in their commands if they want actual newlines
+                if '\n' in output:
+                    output = output.replace('\n', ' ')
+
+                return output
+
+            except subprocess.TimeoutExpired:
+                return f"[Error: Command timed out after 10 seconds]"
+            except Exception as e:
+                return f"[Error: {str(e)}]"
+
+        # Replace all command patterns with their output
+        result = re.sub(pattern, evaluate_command, text)
+
+        # Handle escaped patterns: \$`command` becomes $`command`
+        result = result.replace(r'\$`', '$`')
+
+        return result
+
     def list_commands(self) -> List[Command]:
         """
         List all available commands.
@@ -165,14 +263,18 @@ class CommandLoader:
 
     def execute_command(self, command_name: str, arguments: str = "") -> Optional[str]:
         """
-        Execute a command by substituting arguments.
+        Execute a command by substituting arguments and evaluating shell commands.
 
         Args:
             command_name: Name of the command to execute
             arguments: Arguments to substitute for $ARGUMENTS
 
         Returns:
-            Final prompt with substitutions, or None if command not found
+            Final prompt with substitutions and evaluations, or None if command not found
+
+        Note:
+            Shell command evaluation (via $`command` syntax) only happens if
+            enable_command_eval is True or NANO_CLI_ENABLE_COMMAND_EVAL is set.
         """
         command = self.load_command(command_name)
         if not command:
@@ -184,7 +286,12 @@ class CommandLoader:
         # Also handle ${ARGUMENTS} syntax
         prompt = prompt.replace("${ARGUMENTS}", arguments)
 
-        # Handle escaped dollar signs
+        # Evaluate shell commands if enabled
+        # This happens AFTER $ARGUMENTS substitution so you can use
+        # arguments in shell commands like: $`echo "Processing: $ARGUMENTS"`
+        prompt = self._evaluate_shell_commands(prompt)
+
+        # Handle escaped dollar signs (but not the ones from command evaluation)
         prompt = prompt.replace("\\$", "$")
 
         return prompt.strip()

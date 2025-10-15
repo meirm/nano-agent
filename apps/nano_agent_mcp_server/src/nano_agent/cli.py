@@ -300,7 +300,9 @@ def _run_prompt(
 
     if command_name:
         # Load and execute command
-        loader = CommandLoader()
+        from .modules.config_manager import get_config_manager
+        config = get_config_manager().config
+        loader = CommandLoader(enable_command_eval=config.enable_command_eval)
         final_prompt = loader.execute_command(command_name, arguments)
 
         if final_prompt is None:
@@ -953,7 +955,9 @@ def _run_simple_interactive(
         )
     )
 
-    loader = CommandLoader()
+    from .modules.config_manager import get_config_manager
+    config = get_config_manager().config
+    loader = CommandLoader(enable_command_eval=config.enable_command_eval)
 
     while True:
         try:
@@ -1293,7 +1297,9 @@ app.add_typer(commands_app, name="commands", help="Manage nano-cli command files
 @commands_app.command("list")
 def list_commands():
     """List all available command files."""
-    loader = CommandLoader()
+    from .modules.config_manager import get_config_manager
+    config = get_config_manager().config
+    loader = CommandLoader(enable_command_eval=config.enable_command_eval)
     loader.display_commands_table()
 
 
@@ -1305,7 +1311,9 @@ def create_command(
     ),
 ):
     """Create a new command template file."""
-    loader = CommandLoader()
+    from .modules.config_manager import get_config_manager
+    config = get_config_manager().config
+    loader = CommandLoader(enable_command_eval=config.enable_command_eval)
     success = loader.create_command_template(name, overwrite)
     if not success:
         sys.exit(1)
@@ -1314,7 +1322,9 @@ def create_command(
 @commands_app.command("show")
 def show_command(name: str = typer.Argument(..., help="Name of the command to show")):
     """Show the content of a command file."""
-    loader = CommandLoader()
+    from .modules.config_manager import get_config_manager
+    config = get_config_manager().config
+    loader = CommandLoader(enable_command_eval=config.enable_command_eval)
     command = loader.load_command(name)
 
     if command is None:
@@ -1344,7 +1354,9 @@ def show_command(name: str = typer.Argument(..., help="Name of the command to sh
 @commands_app.command("edit")
 def edit_command(name: str = typer.Argument(..., help="Name of the command to edit")):
     """Open a command file in the default editor."""
-    loader = CommandLoader()
+    from .modules.config_manager import get_config_manager
+    config = get_config_manager().config
+    loader = CommandLoader(enable_command_eval=config.enable_command_eval)
     command = loader.load_command(name)
 
     if command is None:
@@ -1457,7 +1469,8 @@ def init(
         },
         "max_tool_calls": 20,
         "session_timeout": 1800,
-        "log_level": "INFO"
+        "log_level": "INFO",
+        "enable_command_eval": False
     }
     
     # Check if config file exists

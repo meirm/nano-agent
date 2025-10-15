@@ -81,6 +81,9 @@ class NanoAgentConfig:
     max_tool_calls: int = 20  # Maximum tool calls per agent run
     session_timeout: int = 1800  # seconds
 
+    # Command evaluation settings
+    enable_command_eval: bool = False  # Shell command evaluation in command files (disabled by default for security)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary"""
         return asdict(self)
@@ -253,6 +256,7 @@ class ConfigManager:
             "max_turns": 20,
             "max_tool_calls": 20,
             "session_timeout": 1800,
+            "enable_command_eval": False,
         }
 
     def _load_config_file(self, path: Path) -> Optional[Dict[str, Any]]:

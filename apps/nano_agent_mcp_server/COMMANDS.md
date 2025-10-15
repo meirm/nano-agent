@@ -49,7 +49,7 @@ Description of what this command does.
 
 Your prompt here with $ARGUMENTS placeholder.
 
-The $ARGUMENTS will be replaced with whatever 
+The $ARGUMENTS will be replaced with whatever
 the user passes after the command name.
 
 ## Usage
@@ -60,6 +60,85 @@ Examples of how to use this command.
 
 Additional context or requirements.
 ```
+
+### Shell Command Evaluation (Advanced)
+
+Command files can include dynamic shell commands that are evaluated at runtime using the `$\`command\`` syntax:
+
+```markdown
+# System Report
+
+Generate a report for the current system.
+
+## System Information
+
+- **Date**: $\`date "+%Y-%m-%d %H:%M:%S"\`
+- **User**: $\`whoami\`
+- **Hostname**: $\`hostname\`
+- **Current Directory**: $\`pwd\`
+
+Task: $ARGUMENTS
+```
+
+**Security Note**: Shell command evaluation is **disabled by default** for security. To enable it:
+
+### For nano-cli
+
+**Option 1: Configuration File (Recommended)**
+```bash
+# Edit your config file
+nano ~/.nano-cli/config.yaml
+
+# Add or update this line:
+enable_command_eval: true
+
+# Then use your command
+nano-cli -p '/system-report "analyze logs"'
+```
+
+**Option 2: Environment Variable (Temporary)**
+```bash
+# Enable for current session only
+export NANO_CLI_ENABLE_COMMAND_EVAL=true
+
+# Then use your command
+nano-cli -p '/system-report "analyze logs"'
+```
+
+### For nano-agent (MCP Server)
+
+The MCP server uses environment variables only (no config file):
+
+```bash
+# Enable command evaluation for MCP server
+export NANO_AGENT_ENABLE_COMMAND_EVAL=true
+
+# Start the MCP server
+uv run nano-agent
+```
+
+**Note**: Environment variables override config file settings for nano-cli.
+
+**Features**:
+- Commands are executed with a 10-second timeout
+- Failed commands show error messages: `[Error: command not found]`
+- Empty output shows: `[Empty output]`
+- Multiline output is flattened to a single line
+- Commands run in the current shell environment
+- Escape commands with backslash to show them literally: `\$\`whoami\``
+
+**Example Use Cases**:
+```markdown
+date: $\`date "+%Y-%m-%d"\`
+files: $\`ls -1 | wc -l\`
+git_branch: $\`git branch --show-current\`
+python_version: $\`python --version\`
+```
+
+**Order of Operations**:
+1. `$ARGUMENTS` is substituted first
+2. Shell commands `$\`cmd\`` are evaluated (if enabled)
+3. Escaped dollars `\$` become `$`
 
 ## Interactive Mode
 
