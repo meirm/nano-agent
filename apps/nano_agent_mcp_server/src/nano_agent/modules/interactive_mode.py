@@ -884,21 +884,21 @@ class InteractiveSession:
                 if not user_input.strip():
                     continue
 
-                # Check for special commands that should be handled locally
-                # (not sent to coordinator)
-                result = self._handle_special_command(user_input)
-                if result == "EXIT":
+                # Process the prompt (handles commands and evaluation)
+                processed_prompt = self._process_prompt(user_input)
+
+                # Check if command was handled internally or exit requested
+                if processed_prompt == "EXIT":
                     break
-                elif result:
+                elif processed_prompt is None:
                     continue
 
-                # Everything else goes through coordinator
                 # Add user message to chat history
                 self.chat_history.append(ChatMessage(role="user", content=user_input))
 
                 # Create request and execute directly
                 request = PromptNanoAgentRequest(
-                    agentic_prompt=user_input,
+                    agentic_prompt=processed_prompt,
                     model=self.model,
                     provider=self.provider,
                     agent_name=self.agent_loader.current_agent.name

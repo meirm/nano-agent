@@ -63,8 +63,11 @@ Additional context or requirements.
 
 ### Shell Command Evaluation (Advanced)
 
-Command files can include dynamic shell commands that are evaluated at runtime using the `$\`command\`` syntax:
+Command files can include dynamic shell commands that are evaluated at runtime using the `$`command`` syntax (dollar sign followed by backticks).
 
+**IMPORTANT**: In your actual command files, write `$`command`` (without backslashes). The documentation below shows escaped backticks `$\`command\`` for display purposes only - this is markdown escaping so the syntax renders correctly in this README.
+
+**Example command file** (`~/.nano-cli/commands/system_report.md`):
 ```markdown
 # System Report
 
@@ -72,13 +75,15 @@ Generate a report for the current system.
 
 ## System Information
 
-- **Date**: $\`date "+%Y-%m-%d %H:%M:%S"\`
-- **User**: $\`whoami\`
-- **Hostname**: $\`hostname\`
-- **Current Directory**: $\`pwd\`
+- **Date**: $`date "+%Y-%m-%d %H:%M:%S"`
+- **User**: $`whoami`
+- **Hostname**: $`hostname`
+- **Current Directory**: $`pwd`
 
 Task: $ARGUMENTS
 ```
+
+**Note**: Write the above EXACTLY as shown (with regular backticks, no backslashes). The shell commands will be evaluated before the prompt is sent to the agent.
 
 **Security Note**: Shell command evaluation is **disabled by default** for security. To enable it:
 
@@ -127,17 +132,17 @@ uv run nano-agent
 - Commands run in the current shell environment
 - Escape commands with backslash to show them literally: `\$\`whoami\``
 
-**Example Use Cases**:
+**Example Use Cases** (write these in your command files WITHOUT backslashes):
 ```markdown
-date: $\`date "+%Y-%m-%d"\`
-files: $\`ls -1 | wc -l\`
-git_branch: $\`git branch --show-current\`
-python_version: $\`python --version\`
+date: $`date "+%Y-%m-%d"`
+files: $`ls -1 | wc -l`
+git_branch: $`git branch --show-current`
+python_version: $`python --version`
 ```
 
 **Order of Operations**:
 1. `$ARGUMENTS` is substituted first
-2. Shell commands `$\`cmd\`` are evaluated (if enabled)
+2. Shell commands `$`cmd`` are evaluated (if enabled)
 3. Escaped dollars `\$` become `$`
 
 ## Interactive Mode
