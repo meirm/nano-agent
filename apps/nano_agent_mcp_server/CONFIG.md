@@ -252,6 +252,11 @@ nano-cli interactive --agent h4x0r
 - `~/.nano-cli/commands/` - Command template files
 - `~/.nano-cli/history.txt` - Command history
 
+### User Tools
+- `~/.nano-cli/tools/` - Custom user-defined tools (Python modules or executables)
+- `~/.nano-cli/allowed-tools.json` - Optional allowlist (JSON array) restricting exposed tools
+- See [NANO_CLI_USAGE.md](NANO_CLI_USAGE.md#user-defined-tools) for examples and CLI commands
+
 ### nano-agent (MCP Server)
 - No configuration files - uses environment variables only
 
