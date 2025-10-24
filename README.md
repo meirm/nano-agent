@@ -46,7 +46,7 @@ Use nano-agent in read-only mode to audit security vulnerabilities
 ```bash
 # Interactive mode with rich terminal UI (default when no arguments)
 nano-cli
-nano-cli interactive --provider ollama --model gpt-oss:20b
+nano-cli  --provider ollama --model gpt-oss:20b
 
 # Quick test with any model using -p/--prompt flag
 nano-cli -p "Create a hello world script" --model gpt-5-mini
@@ -236,7 +236,7 @@ hop_prompt = "Implement user authentication with tests and docs"
 
 **Interactive Mode with Enhanced UI**
 ```bash
-nano-cli interactive
+nano-cli 
 # Features:
 # - Rich terminal UI with colors and tables
 # - Command history with arrow keys
