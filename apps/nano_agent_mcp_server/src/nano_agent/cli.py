@@ -36,6 +36,7 @@ from .modules.nano_agent import _execute_nano_agent
 from .modules.output_formats import (AgentResponse, BillingInfo, OutputFormat,
                                      create_formatter)
 from .modules.session_manager import SessionManager
+from .modules.user_tools import list_user_tools, run_user_tool
 
 # Import version from package
 try:
@@ -1510,6 +1511,59 @@ def init(
             console.print("\n[yellow]Note: Remember to set OPENAI_API_KEY environment variable[/yellow]")
         elif provider == "anthropic":
             console.print("\n[yellow]Note: Remember to set ANTHROPIC_API_KEY environment variable[/yellow]")
+
+
+@app.command("list-user-tools")
+def list_user_tools_cmd():
+    """
+    List user-defined tools found in ~/.nano-cli/tools.
+    Shows name, type, path and optional description.
+    """
+    try:
+        tools = list_user_tools()
+        if not tools:
+            console.print("[yellow]No user tools found in ~/.nano-cli/tools[/yellow]")
+            return
+        table = Table(title="User Tools", show_header=True, header_style="bold magenta")
+        table.add_column("Name")
+        table.add_column("Type")
+        table.add_column("Path")
+        table.add_column("Description")
+        for name, meta in sorted(tools.items()):
+            table.add_row(name, meta.get("type") or "", meta.get("path") or "", str(meta.get("description") or ""))
+        console.print(table)
+    except Exception as e:
+        console_stderr.print(f"[red]Error listing user tools:[/red] {e}")
+
+
+@app.command("run-user-tool")
+def run_user_tool_cmd(
+    tool: str,
+    input: Optional[str] = typer.Option(None, "--input", "-i", help="JSON input string"),
+    input_file: Optional[str] = typer.Option(None, "--input-file", "-f", help="JSON input file path"),
+):
+    """
+    Run a user-defined tool by name. Input may be provided as a JSON string or a path to a JSON file.
+    """
+    try:
+        data = {}
+        if input_file:
+            data = json.loads(Path(input_file).read_text())
+        elif input:
+            data = json.loads(input)
+    except Exception as e:
+        console_stderr.print(f"[red]Failed to parse input JSON:[/red] {e}")
+        raise typer.Exit(code=2)
+
+    try:
+        result = run_user_tool(tool, data)
+        console.print_json(data=result)
+    except KeyError:
+        console_stderr.print(f"[red]Tool not found: {tool}[/red]")
+        raise typer.Exit(code=3)
+    except Exception as e:
+        console_stderr.print(f"[red]Tool error:[/red] {e}")
+        raise typer.Exit(code=4)
 
 
 def main():
