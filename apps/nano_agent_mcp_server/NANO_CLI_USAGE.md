@@ -450,6 +450,40 @@ nano-cli -p "Complex task" --max-tool-calls 10
 nano-cli -p "Complex task" --unlimited-tool-calls
 ```
 
+### User-defined tools
+
+User-defined tools live in: `~/.nano-cli/tools`. Two formats are supported:
+
+- Python module/package exporting `name` (str) and `run(args: dict)` callable.
+- Executable scripts/binaries (any language) that read a single JSON object from stdin and write a JSON object to stdout.
+
+CLI usage:
+- List available user tools: `nano-cli list-user-tools`
+- Run a tool: `nano-cli run-user-tool <tool> --input '{"key":"value"}'` or `--input-file /path/to/input.json`
+
+Examples:
+```python
+# ~/.nano-cli/tools/reverse.py
+name = "reverse"
+def run(args):
+    return {"reversed": str(args.get("text",""))[::-1]}
+```
+```bash
+# ~/.nano-cli/tools/upper  (make executable: chmod +x ~/.nano-cli/tools/upper)
+#!/usr/bin/env bash
+python - <<'PY'
+import sys, json
+args = json.load(sys.stdin) if not sys.stdin.isatty() else {}
+print(json.dumps({"upper": args.get("text","").upper()}))
+PY
+```
+
+Optional allowlist
+- If present, `~/.nano-cli/allowed-tools.json` (JSON array of tool names) restricts which user tools are exposed by the CLI.
+
+Security note
+- Tools in `~/.nano-cli/tools` run as the user and can execute arbitrary code. Only place trusted tools there. Consider ownership/permission checks or sandboxing for untrusted environments.
+
 ## Troubleshooting
 
 ### Common Issues
