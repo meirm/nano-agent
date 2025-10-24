@@ -11,10 +11,11 @@ A comprehensive guide for using the `nano-cli` command-line interface to interac
 5. [Commands](#commands)
 6. [Provider and Model Selection](#provider-and-model-selection)
 7. [Command Files](#command-files)
-8. [Session Management](#session-management)
-9. [Output Formats](#output-formats)
-10. [Advanced Features](#advanced-features)
-11. [Troubleshooting](#troubleshooting)
+8. [User-defined Tools](#user-defined-tools)
+9. [Session Management](#session-management)
+10. [Output Formats](#output-formats)
+11. [Advanced Features](#advanced-features)
+12. [Troubleshooting](#troubleshooting)
 
 ## Overview
 
@@ -313,6 +314,52 @@ nano-cli -p '/review-code --focus security --depth detailed'
 - **Default values**: Specify in frontmatter
 - **Markdown support**: Full markdown formatting
 - **Reusability**: Share across projects
+
+## User-defined Tools
+
+Extend nano-cli with custom tools stored in `~/.nano-cli/tools/`. Supports Python modules/packages and executable scripts.
+
+### Tool Types
+
+**Python Module** (exports `name` and `run(args)` function):
+```python
+# ~/.nano-cli/tools/hello_tool.py
+name = "hello"
+
+def run(args):
+    return {"result": f"Hello, {args.get('name', 'World')}!"}
+```
+
+**Executable Script** (reads JSON from stdin, writes JSON to stdout):
+```bash
+#!/bin/bash
+# ~/.nano-cli/tools/greet.sh
+read input
+name=$(echo "$input" | jq -r '.name // "World"')
+echo "{\"result\": \"Greetings, $name!\"}"
+```
+Make executable: `chmod +x ~/.nano-cli/tools/greet.sh`
+
+### Using Tools
+
+```bash
+# List available user tools
+nano-cli list-user-tools
+
+# Run a tool with JSON input
+nano-cli run-user-tool hello --input '{"name":"Alice"}'
+nano-cli run-user-tool greet --input-file input.json
+```
+
+### Security & Allowlist
+
+Optional `~/.nano-cli/allowed-tools.json` restricts exposed tools (JSON array of names):
+```json
+["hello", "greet"]
+```
+See [CONFIG.md](CONFIG.md) for configuration details.
+
+**Security Note**: Only use trusted tools. Future enhancements may include ownership checks, permission validation, and sandboxing.
 
 ## Session Management
 
