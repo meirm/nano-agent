@@ -255,6 +255,12 @@ nano-cli interactive --agent h4x0r
 ### nano-agent (MCP Server)
 - No configuration files - uses environment variables only
 
+### User tools
+
+- Location: `~/.nano-cli/tools` — drop Python modules (exporting `name` + `run`) or executable scripts here.
+- Optional allowlist: `~/.nano-cli/allowed-tools.json` — a JSON array of tool names. If present, only listed tools are exposed.
+- See `apps/nano_agent_mcp_server/NANO_CLI_USAGE.md` -> "User-defined tools" for CLI examples (`list-user-tools`, `run-user-tool`) and usage snippets.
+
 ## Troubleshooting
 
 ### Config not loading (nano-cli)
