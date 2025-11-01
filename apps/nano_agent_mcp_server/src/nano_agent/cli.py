@@ -42,7 +42,7 @@ from .modules.user_tools import list_user_tools, run_user_tool
 try:
     from . import __version__
 except ImportError:
-    __version__ = "0.5.0"  # Fallback version
+    __version__ = "0.5.1"  # Fallback version
 
 app = typer.Typer()
 console = Console()
@@ -302,8 +302,13 @@ def _run_prompt(
     if command_name:
         # Load and execute command
         from .modules.config_manager import get_config_manager
+        from .modules.user_tools import get_allowed_tools
         config = get_config_manager().config
-        loader = CommandLoader(enable_command_eval=config.enable_command_eval)
+        allowed_tools = get_allowed_tools()
+        loader = CommandLoader(
+            enable_command_eval=config.enable_command_eval,
+            allowed_tools=allowed_tools,
+        )
         final_prompt = loader.execute_command(command_name, arguments)
 
         if final_prompt is None:
@@ -322,6 +327,24 @@ def _run_prompt(
                 )
                 get_log_console(verbose).print(
                     "[dim]Available commands can be listed with: nano-cli commands list[/dim]"
+                )
+            sys.exit(1)
+
+        # Check for permission errors
+        if final_prompt.startswith("[Error:"):
+            error_msg = final_prompt[7:-1] if final_prompt.endswith("]") else final_prompt[7:]
+            if format_type == OutputFormat.JSON:
+                console.print(
+                    json.dumps(
+                        {
+                            "success": False,
+                            "error": error_msg,
+                        }
+                    )
+                )
+            else:
+                get_log_console(verbose).print(
+                    f"[red]Command execution failed: {error_msg}[/red]"
                 )
             sys.exit(1)
 
@@ -957,8 +980,13 @@ def _run_simple_interactive(
     )
 
     from .modules.config_manager import get_config_manager
+    from .modules.user_tools import get_allowed_tools
     config = get_config_manager().config
-    loader = CommandLoader(enable_command_eval=config.enable_command_eval)
+    allowed_tools = get_allowed_tools()
+    loader = CommandLoader(
+        enable_command_eval=config.enable_command_eval,
+        allowed_tools=allowed_tools,
+    )
 
     while True:
         try:
@@ -1302,8 +1330,13 @@ app.add_typer(skills_app, name="skills", help="Manage Agent Skills")
 def list_commands():
     """List all available command files."""
     from .modules.config_manager import get_config_manager
+    from .modules.user_tools import get_allowed_tools
     config = get_config_manager().config
-    loader = CommandLoader(enable_command_eval=config.enable_command_eval)
+    allowed_tools = get_allowed_tools()
+    loader = CommandLoader(
+        enable_command_eval=config.enable_command_eval,
+        allowed_tools=allowed_tools,
+    )
     loader.display_commands_table()
 
 
@@ -1316,8 +1349,13 @@ def create_command(
 ):
     """Create a new command template file."""
     from .modules.config_manager import get_config_manager
+    from .modules.user_tools import get_allowed_tools
     config = get_config_manager().config
-    loader = CommandLoader(enable_command_eval=config.enable_command_eval)
+    allowed_tools = get_allowed_tools()
+    loader = CommandLoader(
+        enable_command_eval=config.enable_command_eval,
+        allowed_tools=allowed_tools,
+    )
     success = loader.create_command_template(name, overwrite)
     if not success:
         sys.exit(1)
@@ -1327,8 +1365,13 @@ def create_command(
 def show_command(name: str = typer.Argument(..., help="Name of the command to show")):
     """Show the content of a command file."""
     from .modules.config_manager import get_config_manager
+    from .modules.user_tools import get_allowed_tools
     config = get_config_manager().config
-    loader = CommandLoader(enable_command_eval=config.enable_command_eval)
+    allowed_tools = get_allowed_tools()
+    loader = CommandLoader(
+        enable_command_eval=config.enable_command_eval,
+        allowed_tools=allowed_tools,
+    )
     command = loader.load_command(name)
 
     if command is None:
@@ -1359,8 +1402,13 @@ def show_command(name: str = typer.Argument(..., help="Name of the command to sh
 def edit_command(name: str = typer.Argument(..., help="Name of the command to edit")):
     """Open a command file in the default editor."""
     from .modules.config_manager import get_config_manager
+    from .modules.user_tools import get_allowed_tools
     config = get_config_manager().config
-    loader = CommandLoader(enable_command_eval=config.enable_command_eval)
+    allowed_tools = get_allowed_tools()
+    loader = CommandLoader(
+        enable_command_eval=config.enable_command_eval,
+        allowed_tools=allowed_tools,
+    )
     command = loader.load_command(name)
 
     if command is None:
@@ -1399,9 +1447,12 @@ def edit_command(name: str = typer.Argument(..., help="Name of the command to ed
 def list_skills():
     """List all available Agent Skills."""
     from .modules.skill_loader import SkillLoader
+    from .modules.user_tools import get_allowed_tools
     from rich.table import Table
 
-    skill_loader = SkillLoader()
+    # Get allowed_tools from configuration
+    allowed_tools = get_allowed_tools()
+    skill_loader = SkillLoader(allowed_tools=allowed_tools)
     skills = skill_loader.list_skills()
 
     if not skills:
@@ -1422,6 +1473,7 @@ def list_skills():
     table = Table(title="Available Skills", show_header=True, header_style="bold cyan")
     table.add_column("Name", style="green", no_wrap=True)
     table.add_column("Description", style="white")
+    table.add_column("Status", style="cyan", no_wrap=True)
     table.add_column("Source", style="blue", no_wrap=True)
     table.add_column("Resources", style="magenta", no_wrap=True)
 
@@ -1431,9 +1483,17 @@ def list_skills():
         if len(desc) > 60:
             desc = desc[:60] + "..."
 
+        # Status column
+        if skill.enabled:
+            status = "[green]✓ Enabled[/green]"
+        else:
+            reason = skill.disabled_reason or "Disabled"
+            status = f"[red]✗ Disabled[/red]\n[dim]{reason[:40]}...[/dim]" if len(reason) > 40 else f"[red]✗ {reason}[/red]"
+
         table.add_row(
             skill.name,
             desc,
+            status,
             skill.source,
             str(len(skill.resources)),
         )
@@ -1443,10 +1503,13 @@ def list_skills():
     # Show summary
     global_count = sum(1 for s in skills if s.source == "global")
     project_count = sum(1 for s in skills if s.source == "project")
+    enabled_count = sum(1 for s in skills if s.enabled)
+    disabled_count = len(skills) - enabled_count
 
     console.print(
         f"\n[dim]Total: {len(skills)} skills "
-        f"({global_count} global, {project_count} project)[/dim]"
+        f"({enabled_count} enabled, {disabled_count} disabled, "
+        f"{global_count} global, {project_count} project)[/dim]"
     )
     console.print(f"[dim]Global directory: {skill_loader.global_skills_dir}[/dim]")
     console.print(f"[dim]Project directory: {skill_loader.project_skills_dir}[/dim]")
@@ -1456,8 +1519,11 @@ def list_skills():
 def show_skill(name: str = typer.Argument(..., help="Name of the skill to show")):
     """Show detailed information about a skill."""
     from .modules.skill_loader import SkillLoader
+    from .modules.user_tools import get_allowed_tools
 
-    skill_loader = SkillLoader()
+    # Get allowed_tools from configuration
+    allowed_tools = get_allowed_tools()
+    skill_loader = SkillLoader(allowed_tools=allowed_tools)
     skill = skill_loader.get_skill(name)
 
     if skill is None:
@@ -1468,9 +1534,17 @@ def show_skill(name: str = typer.Argument(..., help="Name of the skill to show")
     # Load Level 2 instructions
     instructions = skill_loader.load_skill_instructions(name)
 
+    # Show enabled/disabled status
+    if skill.enabled:
+        status_text = "[green]✓ Enabled[/green]"
+    else:
+        status_text = f"[red]✗ Disabled[/red]"
+        if skill.disabled_reason:
+            status_text += f" - {skill.disabled_reason}"
+
     console.print(
         Panel(
-            f"[green]{skill.description}[/green]",
+            f"[green]{skill.description}[/green]\n\n{status_text}",
             title=f"📚 Skill: {skill.name}",
             border_style="cyan",
         )
@@ -1481,10 +1555,15 @@ def show_skill(name: str = typer.Argument(..., help="Name of the skill to show")
     console.print(f"  Path: {skill.path}")
     console.print(f"  Skill File: {skill.skill_file}")
     console.print(f"  Resources: {len(skill.resources)}")
+    console.print(f"  Status: {'[green]Enabled[/green]' if skill.enabled else '[red]Disabled[/red]'}")
+
+    # Show required tools if present
+    if skill.required_tools:
+        console.print(f"  Required Tools: {', '.join(skill.required_tools)}")
 
     if skill.metadata:
         for key, value in skill.metadata.items():
-            if key not in ["source", "file", "directory"]:
+            if key not in ["source", "file", "directory", "tools", "required_tools"]:
                 console.print(f"  {key}: {value}")
 
     if instructions:

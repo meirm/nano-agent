@@ -772,11 +772,15 @@ def _execute_nano_agent(
         # Skills provide modular capabilities that extend nano-agent functionality
         from .skill_loader import SkillLoader
 
-        skill_loader = SkillLoader()
+        skill_loader = SkillLoader(
+            allowed_tools=request.allowed_tools,
+            blocked_tools=request.blocked_tools,
+        )
         skill_metadata_summary = skill_loader.get_skill_metadata_summary()
         if skill_metadata_summary:
             system_prompt = f"{system_prompt}\n\n{skill_metadata_summary}"
-            logger.debug(f"Added skill metadata to system prompt: {len(skill_loader.list_skills())} skills")
+            enabled_skills = [s for s in skill_loader.list_skills() if s.enabled]
+            logger.debug(f"Added skill metadata to system prompt: {len(enabled_skills)} enabled skills")
 
         # Create tool permissions from request
         permissions = ToolPermissions(

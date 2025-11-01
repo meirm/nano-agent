@@ -9,10 +9,12 @@ Handles command loading with cascade system:
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -31,6 +33,7 @@ class Command:
     prompt_template: str
     metadata: Dict[str, str] = field(default_factory=dict)
     source: str = "global"  # "global" or "project"
+    required_tools: List[str] = field(default_factory=list)  # Tools required by this command (from tools: metadata)
 
     def __post_init__(self):
         """Post-initialization processing."""
@@ -58,16 +61,27 @@ class CascadeCommandResult:
 class CascadeCommandLoader:
     """Manages loading and executing command files with cascade support."""
 
-    def __init__(self, working_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        working_dir: Optional[Path] = None,
+        allowed_tools: Optional[List[str]] = None,
+        blocked_tools: Optional[List[str]] = None,
+    ):
         """
         Initialize the cascade command loader.
 
         Args:
             working_dir: Working directory for project commands (defaults to current dir)
+            allowed_tools: Optional list of allowed tools. Commands will validate against this.
+            blocked_tools: Optional list of blocked tools or command names.
         """
         self.working_dir = working_dir or Path.cwd()
         self.global_commands_dir = Path.home() / ".nano-cli" / "commands"
         self.project_commands_dir = self.working_dir / ".nano-cli" / "commands"
+
+        # Permission configuration
+        self.allowed_tools = allowed_tools
+        self.blocked_tools = blocked_tools
 
         self._commands_cache: Dict[str, Command] = {}
         self._cache_valid = False
@@ -170,12 +184,35 @@ class CascadeCommandLoader:
             logger.error(f"Failed to read command file {path}: {e}")
             return None
 
-        lines = content.strip().split("\n")
+        # Parse YAML frontmatter if present
+        yaml_metadata = {}
+        content_after_frontmatter = content
+
+        # Pattern to detect YAML frontmatter: ---\n...\n---\n
+        frontmatter_match = re.match(
+            r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL
+        )
+
+        if frontmatter_match:
+            # Parse YAML frontmatter
+            yaml_content = frontmatter_match.group(1)
+            content_after_frontmatter = frontmatter_match.group(2)
+
+            try:
+                yaml_metadata = yaml.safe_load(yaml_content) or {}
+            except yaml.YAMLError as e:
+                logger.warning(f"Error parsing YAML frontmatter in {path}: {e}")
+                yaml_metadata = {}
+
+        lines = content_after_frontmatter.strip().split("\n")
 
         # Initialize parsing state
         description = ""
         prompt_template = ""
         metadata = {}
+        # Start with YAML frontmatter metadata
+        if yaml_metadata:
+            metadata.update(yaml_metadata)
 
         # State tracking
         in_prompt_section = False
@@ -268,6 +305,23 @@ class CascadeCommandLoader:
         metadata["source"] = source
         metadata["file"] = str(path)
 
+        # Extract required tools from metadata
+        # Support both "tools:" from YAML frontmatter and metadata section
+        required_tools = []
+        if "tools" in metadata:
+            tools_value = metadata.get("tools", [])
+            if isinstance(tools_value, list):
+                required_tools = [str(t).strip() for t in tools_value if t]
+            elif isinstance(tools_value, str):
+                # Handle comma-separated string
+                required_tools = [t.strip() for t in tools_value.split(",") if t.strip()]
+        elif "required_tools" in metadata:
+            tools_value = metadata.get("required_tools", [])
+            if isinstance(tools_value, list):
+                required_tools = [str(t).strip() for t in tools_value if t]
+            elif isinstance(tools_value, str):
+                required_tools = [t.strip() for t in tools_value.split(",") if t.strip()]
+
         return Command(
             name=name,
             path=path,
@@ -275,7 +329,39 @@ class CascadeCommandLoader:
             prompt_template=prompt_template,
             metadata=metadata,
             source=source,
+            required_tools=required_tools,
         )
+
+    def _validate_command_permissions(self, command: Command) -> Tuple[bool, Optional[str]]:
+        """
+        Validate if a command can be executed based on allowed_tools configuration.
+
+        Logic:
+        1. If allowed_tools is None: allow all commands (backward compatible)
+        2. If command has no tools: metadata: always allow (default behavior)
+        3. If command has tools: metadata: all tools must be in allowed_tools
+
+        Returns:
+            (allowed: bool, error_message: Optional[str])
+        """
+        # No restrictions - backward compatible
+        if self.allowed_tools is None:
+            return True, None
+
+        # If command has no tools requirement, allow it
+        if not command.required_tools:
+            return True, None
+
+        # Check if command is explicitly blocked
+        if self.blocked_tools and command.name in [t.lower() for t in self.blocked_tools]:
+            return False, f"Command '{command.name}' is blocked"
+
+        # Validate all required tools are in allowed_tools
+        missing_tools = [t for t in command.required_tools if t not in self.allowed_tools]
+        if missing_tools:
+            return False, f"Command requires tools not allowed: {', '.join(missing_tools)}"
+
+        return True, None
 
     def get_command(self, command_name: str) -> Optional[Command]:
         """
@@ -315,11 +401,17 @@ class CascadeCommandLoader:
             arguments: Arguments to substitute for $ARGUMENTS
 
         Returns:
-            Final prompt with substitutions, or None if command not found
+            Final prompt with substitutions, or None if command not found.
+            Returns error string with [Error: prefix if command cannot be executed due to permissions.
         """
         command = self.get_command(command_name)
         if not command:
             return None
+
+        # Validate command permissions before execution
+        allowed, error_message = self._validate_command_permissions(command)
+        if not allowed:
+            return f"[Error: {error_message}]"
 
         # Substitute arguments in the prompt template
         prompt = command.prompt_template
@@ -554,19 +646,121 @@ Add any additional context or requirements here.
 class CommandLoader(CascadeCommandLoader):
     """Backward compatibility wrapper for CascadeCommandLoader."""
 
-    def __init__(self, commands_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        commands_dir: Optional[Path] = None,
+        enable_command_eval: bool = None,
+        allowed_tools: Optional[List[str]] = None,
+        blocked_tools: Optional[List[str]] = None,
+    ):
         """Initialize with backward compatibility."""
         if commands_dir is not None:
             # If specific commands_dir provided, use it as global directory
             working_dir = Path.cwd()
-            super().__init__(working_dir)
+            super().__init__(
+                working_dir=working_dir,
+                allowed_tools=allowed_tools,
+                blocked_tools=blocked_tools,
+            )
             self.global_commands_dir = commands_dir
         else:
-            super().__init__()
+            super().__init__(
+                allowed_tools=allowed_tools,
+                blocked_tools=blocked_tools,
+            )
+        # Store enable_command_eval for shell evaluation (used by old CommandLoader)
+        self.enable_command_eval = enable_command_eval
 
     def load_command(self, command_name: str) -> Optional[Command]:
         """Load a single command by name (backward compatibility)."""
         return self.get_command(command_name)
+
+    def execute_command(self, command_name: str, arguments: str = "") -> Optional[str]:
+        """
+        Execute command with shell evaluation support (backward compatibility).
+        
+        Overrides parent to add shell command evaluation if enabled.
+        """
+        # Call parent to get the prompt (which includes permission validation)
+        result = super().execute_command(command_name, arguments)
+        
+        # If parent returned error or None, return as-is
+        if result is None or result.startswith("[Error:"):
+            return result
+        
+        # Evaluate shell commands if enabled
+        if self.enable_command_eval:
+            result = self._evaluate_shell_commands(result)
+        
+        return result
+
+    def _evaluate_shell_commands(self, text: str) -> str:
+        """
+        Evaluate shell commands in text and replace with their output.
+        
+        This is copied from the old CommandLoader for backward compatibility.
+        
+        Detects patterns like $`command` and executes them, replacing with output.
+        """
+        import os
+        import subprocess
+        
+        if not self.enable_command_eval:
+            return text
+        
+        # Pattern to match $`command` (but not \$`command` which is escaped)
+        pattern = r'(?<!\\)\$`([^`]*)`'
+        
+        def evaluate_command(match):
+            """Execute a single shell command and return its output."""
+            command = match.group(1).strip()
+            
+            if not command:
+                return "[Error: Empty command]"
+            
+            try:
+                # Execute the command with timeout for safety
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,  # 10 second timeout
+                    check=False
+                )
+                
+                # Get output (prefer stdout, fall back to stderr if empty)
+                output = result.stdout.strip() if result.stdout.strip() else result.stderr.strip()
+                
+                # Handle errors
+                if result.returncode != 0:
+                    if output:
+                        return f"[Error: {output}]"
+                    else:
+                        return f"[Error: Command exited with code {result.returncode}]"
+                
+                # Handle empty output
+                if not output:
+                    return "[Empty output]"
+                
+                # For multiline output, replace newlines with spaces to keep it inline
+                if '\n' in output:
+                    output = output.replace('\n', ' ')
+                
+                return output
+                
+            except subprocess.TimeoutExpired:
+                return "[Error: Command timed out after 10 seconds]"
+            except Exception as e:
+                return f"[Error: {str(e)}]"
+        
+        # Replace all command patterns with their output
+        result = re.sub(pattern, evaluate_command, text)
+        
+        # Handle escaped patterns: \$`command` becomes $`command`
+        result = result.replace(r'\$`', '$`')
+        
+        return result
 
 
 def parse_command_syntax(input_str: str) -> Tuple[Optional[str], Optional[str]]:

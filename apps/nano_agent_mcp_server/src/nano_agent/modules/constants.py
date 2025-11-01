@@ -136,4 +136,4 @@ SUCCESS_FILE_EDIT = "updated"
 SUCCESS_AGENT_COMPLETE = "Agent completed successfully in {:.2f}s"
 
 # Version Info
-VERSION = "0.5.0"
+VERSION = "0.5.1"

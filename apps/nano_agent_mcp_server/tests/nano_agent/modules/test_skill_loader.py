@@ -352,6 +352,280 @@ class TestBuiltInSkills:
                 assert "name:" in content or "description:" in content
 
 
+class TestSkillPermissions:
+    """Test Skills permission validation with allowed_tools."""
+
+    @pytest.fixture
+    def temp_skills_dir(self):
+        """Create a temporary directory for skills testing."""
+        temp_dir = Path(tempfile.mkdtemp())
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture
+    def skill_loader_no_permissions(self, temp_skills_dir):
+        """Create a SkillLoader without permission restrictions (backward compatible)."""
+        loader = SkillLoader(allowed_tools=None, blocked_tools=None)
+        loader.global_skills_dir = temp_skills_dir / "global_skills"
+        loader.project_skills_dir = temp_skills_dir / "project_skills"
+        loader.builtin_skills_dir = temp_skills_dir / "builtin_skills"
+        
+        loader.global_skills_dir.mkdir(parents=True, exist_ok=True)
+        loader.project_skills_dir.mkdir(parents=True, exist_ok=True)
+        loader.builtin_skills_dir.mkdir(parents=True, exist_ok=True)
+        
+        return loader
+
+    @pytest.fixture
+    def skill_loader_with_permissions(self, temp_skills_dir):
+        """Create a SkillLoader with permission restrictions."""
+        # Skills enabled, and some tools allowed
+        loader = SkillLoader(
+            allowed_tools=["skill", "read_file", "write_file", "list_directory"],
+            blocked_tools=None,
+        )
+        loader.global_skills_dir = temp_skills_dir / "global_skills"
+        loader.project_skills_dir = temp_skills_dir / "project_skills"
+        loader.builtin_skills_dir = temp_skills_dir / "builtin_skills"
+        
+        loader.global_skills_dir.mkdir(parents=True, exist_ok=True)
+        loader.project_skills_dir.mkdir(parents=True, exist_ok=True)
+        loader.builtin_skills_dir.mkdir(parents=True, exist_ok=True)
+        
+        return loader
+
+    def test_skill_without_tools_allowed_when_skills_enabled(self, skill_loader_with_permissions):
+        """Test that skill without tools: metadata is allowed when Skills system is enabled."""
+        skill_dir = skill_loader_with_permissions.global_skills_dir / "simple-skill"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        
+        skill_file.write_text("""---
+name: simple-skill
+description: A simple skill without tools requirement
+---
+""")
+        
+        result = skill_loader_with_permissions.load_skills_metadata()
+        
+        assert "simple-skill" in result.skills
+        skill = result.skills["simple-skill"]
+        assert skill.enabled is True
+        assert skill.disabled_reason is None
+        assert skill.required_tools == []
+
+    def test_skill_with_tools_all_allowed(self, skill_loader_with_permissions):
+        """Test that skill with tools: where all tools are in allowed_tools is enabled."""
+        skill_dir = skill_loader_with_permissions.global_skills_dir / "read-skill"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        
+        skill_file.write_text("""---
+name: read-skill
+description: A skill that only reads files
+tools: ["read_file", "list_directory"]
+---
+""")
+        
+        result = skill_loader_with_permissions.load_skills_metadata()
+        
+        assert "read-skill" in result.skills
+        skill = result.skills["read-skill"]
+        assert skill.enabled is True
+        assert skill.disabled_reason is None
+        assert set(skill.required_tools) == {"read_file", "list_directory"}
+
+    def test_skill_with_tools_some_missing_disabled(self, skill_loader_with_permissions):
+        """Test that skill with tools: where some tools are missing is disabled."""
+        skill_dir = skill_loader_with_permissions.global_skills_dir / "write-skill"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        
+        skill_file.write_text("""---
+name: write-skill
+description: A skill that writes files
+tools: ["read_file", "write_file", "edit_file"]
+---
+""")
+        
+        result = skill_loader_with_permissions.load_skills_metadata()
+        
+        assert "write-skill" in result.skills
+        skill = result.skills["write-skill"]
+        assert skill.enabled is False
+        assert "edit_file" in skill.disabled_reason or "not allowed" in skill.disabled_reason
+
+    def test_skills_disabled_when_skill_not_in_allowed_tools(self, temp_skills_dir):
+        """Test that all skills are disabled when 'skill' is not in allowed_tools."""
+        loader = SkillLoader(
+            allowed_tools=["read_file", "write_file"],  # No "skill"
+            blocked_tools=None,
+        )
+        loader.global_skills_dir = temp_skills_dir / "global_skills"
+        loader.project_skills_dir = temp_skills_dir / "project_skills"
+        loader.builtin_skills_dir = temp_skills_dir / "builtin_skills"
+        
+        loader.global_skills_dir.mkdir(parents=True, exist_ok=True)
+        loader.project_skills_dir.mkdir(parents=True, exist_ok=True)
+        loader.builtin_skills_dir.mkdir(parents=True, exist_ok=True)
+        
+        skill_dir = loader.global_skills_dir / "test-skill"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        
+        skill_file.write_text("""---
+name: test-skill
+description: A test skill
+tools: ["read_file"]
+---
+""")
+        
+        result = loader.load_skills_metadata()
+        
+        assert "test-skill" in result.skills
+        skill = result.skills["test-skill"]
+        assert skill.enabled is False
+        assert "skill" in skill.disabled_reason.lower() or "disabled" in skill.disabled_reason.lower()
+
+    def test_blocked_skill_disabled(self, skill_loader_with_permissions):
+        """Test that explicitly blocked skill is disabled."""
+        # Create a skill
+        skill_dir = skill_loader_with_permissions.global_skills_dir / "blocked-skill"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        
+        skill_file.write_text("""---
+name: blocked-skill
+description: A skill that is blocked
+tools: ["read_file"]
+---
+""")
+        
+        # Create loader with blocked_tools
+        loader = SkillLoader(
+            allowed_tools=["skill", "read_file"],
+            blocked_tools=["blocked-skill"],
+        )
+        loader.global_skills_dir = skill_loader_with_permissions.global_skills_dir
+        loader.project_skills_dir = skill_loader_with_permissions.project_skills_dir
+        loader.builtin_skills_dir = skill_loader_with_permissions.builtin_skills_dir
+        
+        result = loader.load_skills_metadata()
+        
+        assert "blocked-skill" in result.skills
+        skill = result.skills["blocked-skill"]
+        assert skill.enabled is False
+        assert "blocked" in skill.disabled_reason.lower()
+
+    def test_match_skills_filters_disabled_skills(self, skill_loader_with_permissions):
+        """Test that match_skills_to_prompt only returns enabled skills."""
+        # Create two skills: one enabled, one disabled
+        enabled_dir = skill_loader_with_permissions.global_skills_dir / "enabled-skill"
+        enabled_dir.mkdir()
+        enabled_file = enabled_dir / "SKILL.md"
+        enabled_file.write_text("""---
+name: enabled-skill
+description: An enabled skill for reading files
+tools: ["read_file"]
+---
+""")
+        
+        disabled_dir = skill_loader_with_permissions.global_skills_dir / "disabled-skill"
+        disabled_dir.mkdir()
+        disabled_file = disabled_dir / "SKILL.md"
+        disabled_file.write_text("""---
+name: disabled-skill
+description: A disabled skill requiring edit_file
+tools: ["edit_file"]
+---
+""")
+        
+        skill_loader_with_permissions.load_skills_metadata()
+        matches = skill_loader_with_permissions.match_skills_to_prompt("read files")
+        
+        # Should only return enabled skills
+        skill_names = [s.name for s in matches]
+        assert "enabled-skill" in skill_names or len(matches) == 0  # May or may not match
+        assert "disabled-skill" not in skill_names
+
+    def test_get_skill_metadata_summary_filters_disabled(self, skill_loader_with_permissions):
+        """Test that get_skill_metadata_summary only includes enabled skills."""
+        # Create enabled and disabled skills
+        enabled_dir = skill_loader_with_permissions.global_skills_dir / "enabled-skill"
+        enabled_dir.mkdir()
+        enabled_file = enabled_dir / "SKILL.md"
+        enabled_file.write_text("""---
+name: enabled-skill
+description: An enabled skill
+tools: ["read_file"]
+---
+""")
+        
+        disabled_dir = skill_loader_with_permissions.global_skills_dir / "disabled-skill"
+        disabled_dir.mkdir()
+        disabled_file = disabled_dir / "SKILL.md"
+        disabled_file.write_text("""---
+name: disabled-skill
+description: A disabled skill
+tools: ["edit_file"]
+---
+""")
+        
+        skill_loader_with_permissions.load_skills_metadata()
+        summary = skill_loader_with_permissions.get_skill_metadata_summary()
+        
+        # Should include enabled skill
+        assert "enabled-skill" in summary
+        # Should NOT include disabled skill
+        assert "disabled-skill" not in summary
+
+    def test_skills_backward_compatible_no_permissions(self, skill_loader_no_permissions):
+        """Test that skills work without permission restrictions (backward compatible)."""
+        skill_dir = skill_loader_no_permissions.global_skills_dir / "test-skill"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        
+        skill_file.write_text("""---
+name: test-skill
+description: A test skill
+tools: ["read_file", "edit_file"]
+---
+""")
+        
+        result = skill_loader_no_permissions.load_skills_metadata()
+        
+        assert "test-skill" in result.skills
+        skill = result.skills["test-skill"]
+        # Should be enabled when no permissions are set (backward compatible)
+        assert skill.enabled is True
+
+    def test_builtin_skills_have_tools_metadata(self):
+        """Test that built-in skills have tools: metadata."""
+        loader = SkillLoader()
+        
+        # Check built-in skill files directly
+        if loader.builtin_skills_dir.exists():
+            readme_skill_file = loader.builtin_skills_dir / "readme-generator" / "SKILL.md"
+            if readme_skill_file.exists():
+                content = readme_skill_file.read_text()
+                # Check that tools: field exists in the YAML frontmatter
+                assert "tools:" in content or "required_tools:" in content
+                
+                # Parse directly to verify
+                import yaml
+                import re
+                frontmatter_match = re.match(
+                    r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL
+                )
+                if frontmatter_match:
+                    yaml_content = frontmatter_match.group(1)
+                    metadata = yaml.safe_load(yaml_content) or {}
+                    assert "tools" in metadata or "required_tools" in metadata
+                    tools = metadata.get("tools", metadata.get("required_tools", []))
+                    assert len(tools) > 0
+                    assert "read_file" in tools
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

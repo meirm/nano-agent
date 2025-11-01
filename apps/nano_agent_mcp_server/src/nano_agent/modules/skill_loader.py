@@ -35,6 +35,9 @@ class Skill:
     metadata: Dict[str, Any] = field(default_factory=dict)
     source: str = "global"  # "global" or "project"
     resources: List[Path] = field(default_factory=list)  # Additional files in skill directory
+    required_tools: List[str] = field(default_factory=list)  # Tools required by this skill (from tools: metadata)
+    enabled: bool = True  # Whether skill is enabled based on permissions
+    disabled_reason: Optional[str] = None  # Reason if skill is disabled
 
     def __post_init__(self):
         """Post-initialization processing."""
@@ -85,16 +88,27 @@ class SkillLoader:
     - Level 3 (as needed): Additional resources (scripts, docs, etc.)
     """
 
-    def __init__(self, working_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        working_dir: Optional[Path] = None,
+        allowed_tools: Optional[List[str]] = None,
+        blocked_tools: Optional[List[str]] = None,
+    ):
         """
         Initialize the skill loader.
 
         Args:
             working_dir: Working directory for project skills (defaults to current dir)
+            allowed_tools: Optional list of allowed tools. Skills system enabled if "skill" is in this list.
+            blocked_tools: Optional list of blocked tools or skill names.
         """
         self.working_dir = working_dir or Path.cwd()
         self.global_skills_dir = Path.home() / ".nano-cli" / "skills"
         self.project_skills_dir = self.working_dir / ".nano-cli" / "skills"
+
+        # Permission configuration
+        self.allowed_tools = allowed_tools
+        self.blocked_tools = blocked_tools
 
         # Cache for skill metadata (Level 1 - always loaded)
         self._skills_metadata_cache: Dict[str, Skill] = {}
@@ -297,6 +311,23 @@ class SkillLoader:
         if not description:
             description = f"Skill: {skill_name}"
 
+        # Extract required tools from metadata
+        # Support both "tools:" and "required_tools:" for flexibility
+        required_tools = []
+        if "tools" in metadata:
+            tools_value = metadata.get("tools", [])
+            if isinstance(tools_value, list):
+                required_tools = [str(t).strip() for t in tools_value if t]
+            elif isinstance(tools_value, str):
+                # Handle comma-separated string
+                required_tools = [t.strip() for t in tools_value.split(",") if t.strip()]
+        elif "required_tools" in metadata:
+            tools_value = metadata.get("required_tools", [])
+            if isinstance(tools_value, list):
+                required_tools = [str(t).strip() for t in tools_value if t]
+            elif isinstance(tools_value, str):
+                required_tools = [t.strip() for t in tools_value.split(",") if t.strip()]
+
         # Discover resources (Level 3 - for on-demand loading)
         resources = []
         for item in skill_dir.iterdir():
@@ -313,7 +344,8 @@ class SkillLoader:
         metadata["file"] = str(skill_file)
         metadata["directory"] = str(skill_dir)
 
-        return Skill(
+        # Create skill object
+        skill = Skill(
             name=skill_name,
             path=skill_dir,
             skill_file=skill_file,
@@ -322,7 +354,51 @@ class SkillLoader:
             metadata=metadata,
             source=source,
             resources=resources,
+            required_tools=required_tools,
         )
+
+        # Validate permissions and set enabled status
+        enabled, disabled_reason = self._validate_skill_permissions(skill)
+        skill.enabled = enabled
+        skill.disabled_reason = disabled_reason
+
+        return skill
+
+    def _validate_skill_permissions(self, skill: Skill) -> Tuple[bool, Optional[str]]:
+        """
+        Validate if a skill can be enabled based on allowed_tools configuration.
+
+        Logic:
+        1. If allowed_tools is None: enable all skills (backward compatible)
+        2. If allowed_tools is set but "skill" not in it: disable all skills
+        3. If skill has no tools: metadata: always enable (when Skills system is on)
+        4. If skill has tools: metadata: all tools must be in allowed_tools
+
+        Returns:
+            (enabled: bool, disabled_reason: Optional[str])
+        """
+        # No restrictions - backward compatible
+        if self.allowed_tools is None:
+            return True, None
+
+        # Check if Skills system is enabled
+        if "skill" not in [t.lower() for t in self.allowed_tools]:
+            return False, 'Skills system disabled ("skill" not in allowed_tools)'
+
+        # Check if skill is explicitly blocked
+        if self.blocked_tools and skill.name in [t.lower() for t in self.blocked_tools]:
+            return False, f"Skill '{skill.name}' is blocked"
+
+        # If skill has no tools requirement, allow it
+        if not skill.required_tools:
+            return True, None
+
+        # Validate all required tools are in allowed_tools
+        missing_tools = [t for t in skill.required_tools if t not in self.allowed_tools]
+        if missing_tools:
+            return False, f"Required tools not allowed: {', '.join(missing_tools)}"
+
+        return True, None
 
     def load_skill_instructions(self, skill_name: str) -> Optional[str]:
         """
@@ -448,17 +524,19 @@ class SkillLoader:
         # Sort by match count (descending)
         matches.sort(key=lambda x: x[0], reverse=True)
 
-        # Return just the skills, ordered by relevance
-        return [skill for _, skill in matches]
+        # Return just the enabled skills, ordered by relevance
+        return [skill for _, skill in matches if skill.enabled]
 
     def get_skill_metadata_summary(self) -> str:
         """
-        Get a formatted summary of all available skills for system prompt.
+        Get a formatted summary of all available enabled skills for system prompt.
 
         Returns:
             String with skill metadata formatted for system prompt inclusion
         """
-        skills = self.list_skills()
+        all_skills = self.list_skills()
+        # Filter to only enabled skills
+        skills = [s for s in all_skills if s.enabled]
 
         if not skills:
             return ""
