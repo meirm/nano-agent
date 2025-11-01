@@ -392,6 +392,32 @@ nano-cli -p "Check code formatting in this project"
 nano-cli -p "Find formatting issues in src/"
 ```
 
+#### 3. Write Release Notes
+**Purpose**: Generate professional release notes and changelog entries from git history and project changes
+
+**Trigger keywords**: "write release notes", "create changelog", "release notes", "changelog", "document version changes", "generate release documentation"
+
+**Features**:
+- Analyzes git history to identify changes
+- Extracts version information from package files
+- Categorizes changes (Added, Changed, Fixed, Security, Breaking Changes)
+- Supports semantic versioning (major.minor.patch)
+- Generates professional release notes in standard format
+- Maintains consistency with existing changelog formats
+- Includes upgrade instructions and migration guides for breaking changes
+
+**Usage**:
+```bash
+# Via CLI
+nano-cli -p "Write release notes for version 2.0.0"
+
+# Update existing changelog
+nano-cli -p "Update the changelog with recent changes"
+
+# Create changelog for first release
+nano-cli -p "Create release notes for the initial release"
+```
+
 ### Installing Built-in Skills
 
 Built-in skills are **automatically installed** when you first use nano-agent. They're copied to `~/.nano-cli/skills/` from the package.

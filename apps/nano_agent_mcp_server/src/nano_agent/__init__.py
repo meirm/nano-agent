@@ -2,7 +2,7 @@
 from .modules import typing_fix
 
 # Version information
-__version__ = "0.3.1"
+__version__ = "0.5.0"
 
 # Enable flexible configuration if available
 try:

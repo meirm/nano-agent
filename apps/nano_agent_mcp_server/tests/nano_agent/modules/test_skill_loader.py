@@ -338,6 +338,19 @@ class TestBuiltInSkills:
                 assert "code-formatting-checker" in content.lower() or "format" in content.lower()
                 assert "name:" in content or "description:" in content
 
+    def test_write_release_notes_skill_exists(self):
+        """Test that write-release-notes skill file exists."""
+        loader = SkillLoader()
+        builtin_dir = loader.builtin_skills_dir
+        
+        if builtin_dir.exists():
+            release_skill_dir = builtin_dir / "write-release-notes"
+            skill_file = release_skill_dir / "SKILL.md"
+            if skill_file.exists():
+                content = skill_file.read_text()
+                assert "write-release-notes" in content.lower() or "release" in content.lower()
+                assert "name:" in content or "description:" in content
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
