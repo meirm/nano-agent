@@ -174,6 +174,7 @@ async def get_server_capabilities() -> Dict[str, Any]:
                     "conversation_history": True,
                     "hooks_system": True,
                     "read_only_mode": True,
+                    "agent_skills": True,
                 },
                 "limits": {
                     "max_turns": MAX_AGENT_TURNS,
@@ -191,6 +192,9 @@ async def get_server_capabilities() -> Dict[str, Any]:
                     "get_available_models",
                     "list_provider_models",
                     "get_server_capabilities",
+                    "list_skills",
+                    "get_skill_info",
+                    "load_skill_instructions",
                 ],
                 "agent_internal_tools": [
                     "read_file",
@@ -433,3 +437,133 @@ async def list_provider_models(
             error_msg = str(e)
 
         return {"success": False, "error": error_msg, "models": [], "providers": []}
+
+
+async def list_skills() -> Dict[str, Any]:
+    """
+    List all available Agent Skills with metadata.
+
+    Returns:
+        Dictionary containing:
+        - success: Whether the operation succeeded
+        - skills: List of skill metadata dictionaries
+        - count: Total number of skills
+        - error: Error message if operation failed
+    """
+    try:
+        from .modules.skill_loader import SkillLoader
+
+        skill_loader = SkillLoader()
+        skills = skill_loader.list_skills()
+
+        skill_list = []
+        for skill in skills:
+            skill_dict = {
+                "name": skill.name,
+                "description": skill.description,
+                "source": skill.source,
+                "path": str(skill.path),
+                "metadata": skill.metadata,
+                "resource_count": len(skill.resources),
+            }
+            skill_list.append(skill_dict)
+
+        return {
+            "success": True,
+            "skills": skill_list,
+            "count": len(skill_list),
+        }
+
+    except Exception as e:
+        logger.error(f"Error listing skills: {str(e)}")
+        return {"success": False, "error": str(e), "skills": [], "count": 0}
+
+
+async def get_skill_info(skill_name: str) -> Dict[str, Any]:
+    """
+    Get full information about a specific skill.
+
+    Args:
+        skill_name: Name of the skill to get information for
+
+    Returns:
+        Dictionary containing:
+        - success: Whether the operation succeeded
+        - skill: Skill information dictionary with metadata and instructions
+        - error: Error message if operation failed
+    """
+    try:
+        from .modules.skill_loader import SkillLoader
+
+        skill_loader = SkillLoader()
+        skill = skill_loader.get_skill(skill_name)
+
+        if not skill:
+            return {
+                "success": False,
+                "error": f"Skill '{skill_name}' not found",
+            }
+
+        # Load Level 2 instructions
+        instructions = skill_loader.load_skill_instructions(skill_name)
+
+        skill_info = {
+            "name": skill.name,
+            "description": skill.description,
+            "source": skill.source,
+            "path": str(skill.path),
+            "skill_file": str(skill.skill_file),
+            "metadata": skill.metadata,
+            "instructions": instructions,  # Level 2 content
+            "resources": [str(res) for res in skill.resources],
+            "resource_count": len(skill.resources),
+        }
+
+        return {
+            "success": True,
+            "skill": skill_info,
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting skill info: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+
+async def load_skill_instructions(skill_name: str) -> Dict[str, Any]:
+    """
+    Load skill instructions (Level 2 - progressive disclosure).
+
+    This loads the full SKILL.md content for a skill.
+    Use this when you need the full instructions for a skill.
+
+    Args:
+        skill_name: Name of the skill to load instructions for
+
+    Returns:
+        Dictionary containing:
+        - success: Whether the operation succeeded
+        - skill_name: Name of the skill
+        - instructions: Full SKILL.md content (without YAML frontmatter)
+        - error: Error message if operation failed
+    """
+    try:
+        from .modules.skill_loader import SkillLoader
+
+        skill_loader = SkillLoader()
+        instructions = skill_loader.load_skill_instructions(skill_name)
+
+        if instructions is None:
+            return {
+                "success": False,
+                "error": f"Skill '{skill_name}' not found or failed to load instructions",
+            }
+
+        return {
+            "success": True,
+            "skill_name": skill_name,
+            "instructions": instructions,
+        }
+
+    except Exception as e:
+        logger.error(f"Error loading skill instructions: {str(e)}")
+        return {"success": False, "error": str(e)}

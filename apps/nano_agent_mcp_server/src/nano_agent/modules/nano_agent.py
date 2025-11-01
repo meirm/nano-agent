@@ -768,6 +768,16 @@ def _execute_nano_agent(
                     f"Using extended system prompt with agent: {request.agent_name}"
                 )
 
+        # Load and integrate Agent Skills metadata (Level 1 - progressive disclosure)
+        # Skills provide modular capabilities that extend nano-agent functionality
+        from .skill_loader import SkillLoader
+
+        skill_loader = SkillLoader()
+        skill_metadata_summary = skill_loader.get_skill_metadata_summary()
+        if skill_metadata_summary:
+            system_prompt = f"{system_prompt}\n\n{skill_metadata_summary}"
+            logger.debug(f"Added skill metadata to system prompt: {len(skill_loader.list_skills())} skills")
+
         # Create tool permissions from request
         permissions = ToolPermissions(
             allowed_tools=request.allowed_tools,
@@ -813,6 +823,23 @@ def _execute_nano_agent(
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
+        # Match skills to user prompt and load instructions if relevant (Level 2 - progressive disclosure)
+        # Skills are triggered when the user prompt matches their description keywords
+        matching_skills = skill_loader.match_skills_to_prompt(request.agentic_prompt)
+        skill_instructions = []
+
+        if matching_skills:
+            logger.info(
+                f"Matched {len(matching_skills)} skills to prompt: {[s.name for s in matching_skills]}"
+            )
+            for skill in matching_skills:
+                instructions = skill_loader.load_skill_instructions(skill.name)
+                if instructions:
+                    # Format skill instructions for inclusion in prompt
+                    skill_context = f"\n\n---\nSkill: {skill.name}\n{instructions}\n---\n"
+                    skill_instructions.append(skill_context)
+                    logger.debug(f"Loaded Level 2 instructions for skill: {skill.name}")
+
         # Prepare the prompt with chat history context
         # Since Runner.run_sync doesn't support messages parameter directly,
         # we'll format the chat history as part of the prompt
@@ -834,11 +861,21 @@ def _execute_nano_agent(
             conversation_lines.append("Current request:")
             conversation_lines.append(request.agentic_prompt)
 
+            # Add skill instructions if any were matched
+            if skill_instructions:
+                conversation_lines.append("\n--- Relevant Skills ---")
+                conversation_lines.extend(skill_instructions)
+
             # Combine into a single prompt with context
             full_prompt = "\n".join(conversation_lines)
             has_history = "true"  # Use string for trace metadata
         else:
-            full_prompt = request.agentic_prompt
+            # No chat history - prepend skill instructions to the prompt
+            if skill_instructions:
+                skill_context = "\n".join(skill_instructions)
+                full_prompt = f"{skill_context}\n\nUser request: {request.agentic_prompt}"
+            else:
+                full_prompt = request.agentic_prompt
             has_history = "false"  # Use string for trace metadata
 
         # Determine max turns
