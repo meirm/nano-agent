@@ -39,8 +39,13 @@ class NanoAgentCompleter(Completer):
     def __init__(self):
         """Initialize the completer with commands and models."""
         from .config_manager import get_config_manager
+        from .user_tools import get_allowed_tools
         config = get_config_manager().config
-        self.loader = CommandLoader(enable_command_eval=config.enable_command_eval)
+        allowed_tools = get_allowed_tools()
+        self.loader = CommandLoader(
+            enable_command_eval=config.enable_command_eval,
+            allowed_tools=allowed_tools,
+        )
         self.commands = []
         self.models = list(AVAILABLE_MODELS.keys())
         # Built-in slash commands (embedded)
@@ -834,6 +839,12 @@ class InteractiveSession:
                 console.print(
                     "[dim]Type '/commands' to see available commands or '/help' for help.[/dim]"
                 )
+                return None
+
+            # Check for permission errors
+            if final_prompt.startswith("[Error:"):
+                error_msg = final_prompt[7:-1] if final_prompt.endswith("]") else final_prompt[7:]
+                console.print(f"[red]Command execution failed: {error_msg}[/red]")
                 return None
 
             console.print(f"[dim]Using command: /{command_name}[/dim]")

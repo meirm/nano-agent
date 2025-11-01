@@ -53,8 +53,13 @@ class CoordinatorAgent:
         self.api_key = api_key
         self.agent_loader = AgentLoader()
         from .config_manager import get_config_manager
+        from .user_tools import get_allowed_tools
         config = get_config_manager().config
-        self.command_loader = CommandLoader(enable_command_eval=config.enable_command_eval)
+        allowed_tools = get_allowed_tools()
+        self.command_loader = CommandLoader(
+            enable_command_eval=config.enable_command_eval,
+            allowed_tools=allowed_tools,
+        )
         self.current_agent: Optional[Agent] = None
         self.chat_history: List[ChatMessage] = []
 
