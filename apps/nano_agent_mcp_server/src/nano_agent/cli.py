@@ -1294,6 +1294,9 @@ def list_models(
 commands_app = typer.Typer()
 app.add_typer(commands_app, name="commands", help="Manage nano-cli command files")
 
+skills_app = typer.Typer()
+app.add_typer(skills_app, name="skills", help="Manage Agent Skills")
+
 
 @commands_app.command("list")
 def list_commands():
@@ -1389,6 +1392,285 @@ def edit_command(name: str = typer.Argument(..., help="Name of the command to ed
                 console.print(
                     f"[yellow]No editor found. Please edit manually: {command.path}[/yellow]"
                 )
+
+
+# Skills commands
+@skills_app.command("list")
+def list_skills():
+    """List all available Agent Skills."""
+    from .modules.skill_loader import SkillLoader
+    from rich.table import Table
+
+    skill_loader = SkillLoader()
+    skills = skill_loader.list_skills()
+
+    if not skills:
+        console.print(
+            Panel(
+                "[yellow]No skills found.[/yellow]\n\n"
+                "Create your first skill with:\n"
+                "  nano-cli skills create <name>\n\n"
+                "Skills directories:\n"
+                f"  Global: {skill_loader.global_skills_dir}\n"
+                f"  Project: {skill_loader.project_skills_dir}",
+                title="📚 Agent Skills",
+                border_style="yellow",
+            )
+        )
+        return
+
+    table = Table(title="Available Skills", show_header=True, header_style="bold cyan")
+    table.add_column("Name", style="green", no_wrap=True)
+    table.add_column("Description", style="white")
+    table.add_column("Source", style="blue", no_wrap=True)
+    table.add_column("Resources", style="magenta", no_wrap=True)
+
+    for skill in skills:
+        # Truncate long descriptions
+        desc = skill.description
+        if len(desc) > 60:
+            desc = desc[:60] + "..."
+
+        table.add_row(
+            skill.name,
+            desc,
+            skill.source,
+            str(len(skill.resources)),
+        )
+
+    console.print(table)
+
+    # Show summary
+    global_count = sum(1 for s in skills if s.source == "global")
+    project_count = sum(1 for s in skills if s.source == "project")
+
+    console.print(
+        f"\n[dim]Total: {len(skills)} skills "
+        f"({global_count} global, {project_count} project)[/dim]"
+    )
+    console.print(f"[dim]Global directory: {skill_loader.global_skills_dir}[/dim]")
+    console.print(f"[dim]Project directory: {skill_loader.project_skills_dir}[/dim]")
+
+
+@skills_app.command("show")
+def show_skill(name: str = typer.Argument(..., help="Name of the skill to show")):
+    """Show detailed information about a skill."""
+    from .modules.skill_loader import SkillLoader
+
+    skill_loader = SkillLoader()
+    skill = skill_loader.get_skill(name)
+
+    if skill is None:
+        console.print(f"[red]Skill '{name}' not found.[/red]")
+        console.print(f"[dim]Create it with: nano-cli skills create {name}[/dim]")
+        sys.exit(1)
+
+    # Load Level 2 instructions
+    instructions = skill_loader.load_skill_instructions(name)
+
+    console.print(
+        Panel(
+            f"[green]{skill.description}[/green]",
+            title=f"📚 Skill: {skill.name}",
+            border_style="cyan",
+        )
+    )
+
+    console.print("\n[yellow]Metadata:[/yellow]")
+    console.print(f"  Source: {skill.source}")
+    console.print(f"  Path: {skill.path}")
+    console.print(f"  Skill File: {skill.skill_file}")
+    console.print(f"  Resources: {len(skill.resources)}")
+
+    if skill.metadata:
+        for key, value in skill.metadata.items():
+            if key not in ["source", "file", "directory"]:
+                console.print(f"  {key}: {value}")
+
+    if instructions:
+        console.print("\n[yellow]Instructions:[/yellow]")
+        console.print(Panel(instructions, border_style="dim"))
+
+    if skill.resources:
+        console.print("\n[yellow]Resources:[/yellow]")
+        for resource in skill.resources[:10]:  # Show first 10
+            console.print(f"  - {resource}")
+        if len(skill.resources) > 10:
+            console.print(f"  ... and {len(skill.resources) - 10} more")
+
+
+@skills_app.command("create")
+def create_skill(
+    name: str = typer.Argument(..., help="Name of the skill to create"),
+    global_skill: bool = typer.Option(
+        False, "--global", "-g", help="Create in global directory (~/.nano-cli/skills/)"
+    ),
+    overwrite: bool = typer.Option(
+        False, "--overwrite", help="Overwrite existing skill"
+    ),
+):
+    """Create a new skill template directory with SKILL.md."""
+    from .modules.skill_loader import SkillLoader
+    from pathlib import Path
+
+    skill_loader = SkillLoader()
+
+    # Choose directory
+    if global_skill:
+        target_dir = skill_loader.global_skills_dir
+        location = "global"
+    else:
+        target_dir = skill_loader.project_skills_dir
+        location = "project"
+
+    # Ensure directory exists
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    skill_dir = target_dir / name.lower().replace("_", "-")
+    skill_file = skill_dir / "SKILL.md"
+
+    if skill_file.exists() and not overwrite:
+        console.print(
+            f"[yellow]Skill '{name}' already exists in {location}. "
+            f"Use --overwrite to replace.[/yellow]"
+        )
+        sys.exit(1)
+
+    # Create skill directory
+    skill_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate SKILL.md template
+    skill_name_normalized = name.lower().replace("_", "-")
+    template = f"""---
+name: {skill_name_normalized}
+description: Brief description of what this skill does and when to use it. Include keywords that will help match this skill to user prompts.
+---
+
+# {name.title().replace('_', ' ').replace('-', ' ')}
+
+## Instructions
+
+Clear, step-by-step guidance for the agent to follow when using this skill.
+
+### Quick Start
+
+Basic usage example or workflow:
+
+```python
+# Example code or commands
+```
+
+### Advanced Usage
+
+For more complex scenarios, see [ADVANCED.md](ADVANCED.md).
+
+## Examples
+
+Concrete examples of when and how this skill is used.
+
+## Notes
+
+Additional context, requirements, or limitations.
+"""
+
+    try:
+        skill_file.write_text(template, encoding="utf-8")
+        console.print(
+            f"[green]✓ Created {location} skill template: {skill_dir}[/green]"
+        )
+        console.print(f"[dim]Edit the skill: {skill_file}[/dim]")
+
+        # Invalidate cache to force reload
+        skill_loader.refresh_cache()
+
+    except Exception as e:
+        console.print(f"[red]Error creating skill template: {e}[/red]")
+        sys.exit(1)
+
+
+@skills_app.command("install-builtin")
+def install_builtin_skills(
+    overwrite: bool = typer.Option(
+        False, "--overwrite", help="Overwrite existing built-in skills"
+    ),
+    skill: Optional[str] = typer.Option(
+        None, "--skill", "-s", help="Install specific skill by name"
+    ),
+):
+    """Install built-in skills from the package."""
+    from .modules.skill_loader import SkillLoader
+    from rich.table import Table
+
+    skill_loader = SkillLoader()
+    builtin_skills = skill_loader.list_builtin_skills()
+
+    if not builtin_skills:
+        console.print(
+            Panel(
+                "[yellow]No built-in skills found in package.[/yellow]",
+                title="📚 Built-in Skills",
+                border_style="yellow",
+            )
+        )
+        return
+
+    # Filter by specific skill if requested
+    skill_names = [skill] if skill else None
+    if skill and skill not in builtin_skills:
+        console.print(f"[red]Built-in skill '{skill}' not found.[/red]")
+        console.print(f"[dim]Available skills: {', '.join(builtin_skills)}[/dim]")
+        sys.exit(1)
+
+    # Check which skills are already installed
+    installed_skills = skill_loader.list_skills()
+    installed_names = {s.name for s in installed_skills}
+
+    # Install skills
+    results = skill_loader.install_builtin_skills(
+        overwrite=overwrite, skill_names=skill_names
+    )
+
+    # Display results
+    table = Table(title="Built-in Skills Installation", show_header=True, header_style="bold cyan")
+    table.add_column("Skill", style="green", no_wrap=True)
+    table.add_column("Status", style="white")
+    table.add_column("Details", style="dim")
+
+    for skill_name in (skill_names or builtin_skills):
+        if skill_name not in results:
+            continue
+
+        success = results[skill_name]
+        was_installed = skill_name in installed_names
+
+        if success:
+            if was_installed and not overwrite:
+                status = "[yellow]Skipped[/yellow]"
+                details = "Already installed (use --overwrite to replace)"
+            else:
+                status = "[green]Installed[/green]"
+                details = f"Installed to {skill_loader.global_skills_dir / skill_name}"
+        else:
+            if was_installed:
+                status = "[yellow]Skipped[/yellow]"
+                details = "Already exists (use --overwrite to replace)"
+            else:
+                status = "[red]Failed[/red]"
+                details = "Installation failed - check logs"
+
+        table.add_row(skill_name, status, details)
+
+    console.print(table)
+
+    # Summary
+    installed_count = sum(1 for r in results.values() if r)
+    skipped_count = sum(1 for r in results.values() if not r)
+    total_count = len(results)
+
+    console.print(
+        f"\n[dim]Summary: {installed_count} installed, {skipped_count} skipped of {total_count} total[/dim]"
+    )
+    console.print(f"[dim]Skills location: {skill_loader.global_skills_dir}[/dim]")
 
 
 @app.command("init")

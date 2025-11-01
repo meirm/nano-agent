@@ -17,7 +17,8 @@ os.environ["NANO_AGENT_MCP_MODE"] = "true"
 
 from .mcp_tools import (clear_old_sessions, get_available_models,
                         get_server_capabilities, get_session_info,
-                        list_provider_models, list_sessions)
+                        get_skill_info, list_provider_models, list_sessions,
+                        list_skills, load_skill_instructions)
 from .mcp_resources import get_documentation, get_version
 from .mcp_prompts import (code_review_prompt, refactor_prompt, test_generation_prompt,
                          documentation_prompt, security_audit_prompt, api_design_prompt,
@@ -55,6 +56,9 @@ mcp = FastMCP(
     - get_available_models: List available models and providers (static)
     - list_provider_models: Query providers for current model lists with details
     - get_server_capabilities: Get server features and limitations
+    - list_skills: List all available Agent Skills
+    - get_skill_info: Get detailed information about a specific skill
+    - load_skill_instructions: Load full instructions for a skill
     - get_documentation: Get documentation for the nano agent
     """,
 )
@@ -68,6 +72,9 @@ mcp.tool()(clear_old_sessions)
 mcp.tool()(get_available_models)
 mcp.tool()(list_provider_models)
 mcp.tool()(get_server_capabilities)
+mcp.tool()(list_skills)
+mcp.tool()(get_skill_info)
+mcp.tool()(load_skill_instructions)
 
 # Register resources using decorator pattern
 @mcp.resource("resource://documentation")
