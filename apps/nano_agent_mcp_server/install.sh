@@ -112,26 +112,96 @@ install_nano_agent() {
         # Installing from local repository
         print_step "Installing from local repository..."
         
-        # Check if we're in the nano_agent_mcp_server directory
+        # Determine the source directory and repo root
+        SOURCE_DIR=""
+        REPO_ROOT=""
         if [ -f "$(pwd)/pyproject.toml" ] && [ -d "$(pwd)/src/nano_agent" ]; then
             # We're in the apps/nano_agent_mcp_server directory
-            # Need to copy the entire repo to preserve relative paths in pyproject.toml
-            print_step "Copying from nano-agent repository..."
-            REPO_ROOT="$(pwd)/../.."
-            rsync -av --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='.pytest_cache' \
-                  --exclude='.git' --exclude='logs' "$REPO_ROOT/" "$INSTALL_DIR/nano-agent/"
-            INSTALL_PATH="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server"
+            SOURCE_DIR="$(pwd)"
+            REPO_ROOT="$(dirname "$(dirname "$SOURCE_DIR")")"
         elif [ -f "$(pwd)/apps/nano_agent_mcp_server/pyproject.toml" ]; then
             # We're in the root nano-agent directory
-            print_step "Copying from nano-agent root directory..."
-            rsync -av --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='.pytest_cache' \
-                  --exclude='.git' --exclude='logs' "$(pwd)/" "$INSTALL_DIR/nano-agent/"
-            INSTALL_PATH="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server"
+            SOURCE_DIR="$(pwd)/apps/nano_agent_mcp_server"
+            REPO_ROOT="$(pwd)"
         else
             print_error "Unable to find nano-agent source code"
             echo "Please run this script from the nano-agent root directory or apps/nano_agent_mcp_server directory"
             exit 1
         fi
+        
+        # Install the package directly from source (installs to ~/.local/bin)
+        print_step "Installing nano-agent package..."
+        cd "$SOURCE_DIR"
+        
+        # Install dependencies and tool
+        if [ -f ".env.sample" ] && [ ! -f ".env" ]; then
+            cp .env.sample .env
+            print_success "Created .env file from template"
+        elif [ -f ".env" ]; then
+            print_success "Existing .env file preserved (not overwritten)"
+        fi
+        
+        uv sync
+        uv tool install --force .
+        print_success "nano-agent command installed to ~/.local/bin"
+        
+        # Create ~/.nano-agent directory structure and copy builtins
+        print_step "Setting up ~/.nano-agent with builtin commands, agents, and skills..."
+        mkdir -p "$INSTALL_DIR/commands"
+        mkdir -p "$INSTALL_DIR/agents"
+        mkdir -p "$INSTALL_DIR/skills"
+        
+        # Copy builtin skills from src/nano_agent/data/builtin_skills/
+        if [ -d "$SOURCE_DIR/src/nano_agent/data/builtin_skills" ]; then
+            print_step "Copying builtin skills..."
+            for skill_dir in "$SOURCE_DIR/src/nano_agent/data/builtin_skills"/*; do
+                if [ -d "$skill_dir" ] && [ -f "$skill_dir/SKILL.md" ]; then
+                    skill_name="$(basename "$skill_dir")"
+                    cp -r "$skill_dir" "$INSTALL_DIR/skills/$skill_name"
+                    print_success "Installed builtin skill: $skill_name"
+                fi
+            done
+        fi
+        
+        # Copy example commands if they exist (treat them as builtins)
+        if [ -d "$REPO_ROOT/examples/dot.nano-cli/commands" ]; then
+            print_step "Copying builtin commands..."
+            for cmd_file in "$REPO_ROOT/examples/dot.nano-cli/commands"/*.md; do
+                if [ -f "$cmd_file" ]; then
+                    cmd_name="$(basename "$cmd_file")"
+                    cp "$cmd_file" "$INSTALL_DIR/commands/$cmd_name"
+                fi
+            done
+            print_success "Installed builtin commands"
+        fi
+        
+        # Copy example agents if they exist (treat them as builtins)
+        if [ -d "$REPO_ROOT/examples/dot.nano-cli/agents" ]; then
+            print_step "Copying builtin agents..."
+            for agent_file in "$REPO_ROOT/examples/dot.nano-cli/agents"/*.md; do
+                if [ -f "$agent_file" ]; then
+                    agent_name="$(basename "$agent_file")"
+                    cp "$agent_file" "$INSTALL_DIR/agents/$agent_name"
+                fi
+            done
+            print_success "Installed builtin agents"
+        fi
+        
+        # Copy builtin hooks if they exist
+        if [ -d "$SOURCE_DIR/examples/hooks" ]; then
+            print_step "Copying builtin hooks..."
+            mkdir -p "$INSTALL_DIR/hooks"
+            for hook_file in "$SOURCE_DIR/examples/hooks"/*; do
+                if [ -f "$hook_file" ]; then
+                    hook_name="$(basename "$hook_file")"
+                    cp "$hook_file" "$INSTALL_DIR/hooks/$hook_name"
+                fi
+            done
+            print_success "Installed builtin hooks"
+        fi
+        
+        # Set INSTALL_PATH for compatibility with rest of script
+        INSTALL_PATH="$SOURCE_DIR"
     else
         # Installing from internet (GitHub)
         if [ -d "$INSTALL_DIR/nano-agent" ]; then
@@ -148,27 +218,67 @@ install_nano_agent() {
             git clone "$GITHUB_REPO.git" "$INSTALL_DIR/nano-agent"
         fi
         INSTALL_PATH="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server"
+        
+        # Change to installation directory
+        cd "$INSTALL_PATH"
+        
+        # Install dependencies
+        print_step "Installing dependencies..."
+        if [ -f ".env.sample" ] && [ ! -f ".env" ]; then
+            cp .env.sample .env
+            print_success "Created .env file from template"
+        elif [ -f ".env" ]; then
+            print_success "Existing .env file preserved (not overwritten)"
+        fi
+        
+        uv sync
+        print_success "Dependencies installed"
+        
+        # Install as a tool
+        print_step "Installing nano-agent command..."
+        uv tool install --force .
+        print_success "nano-agent command installed"
+        
+        # Copy builtins to ~/.nano-agent (for remote installs)
+        print_step "Setting up ~/.nano-agent with builtin commands, agents, and skills..."
+        mkdir -p "$INSTALL_DIR/commands"
+        mkdir -p "$INSTALL_DIR/agents"
+        mkdir -p "$INSTALL_DIR/skills"
+        
+        # Copy builtin skills
+        if [ -d "$INSTALL_PATH/src/nano_agent/data/builtin_skills" ]; then
+            print_step "Copying builtin skills..."
+            for skill_dir in "$INSTALL_PATH/src/nano_agent/data/builtin_skills"/*; do
+                if [ -d "$skill_dir" ] && [ -f "$skill_dir/SKILL.md" ]; then
+                    skill_name="$(basename "$skill_dir")"
+                    cp -r "$skill_dir" "$INSTALL_DIR/skills/$skill_name"
+                fi
+            done
+            print_success "Installed builtin skills"
+        fi
+        
+        # Copy example commands and agents if they exist
+        REPO_ROOT_INSTALL="$INSTALL_DIR/nano-agent"
+        if [ -d "$REPO_ROOT_INSTALL/examples/dot.nano-cli/commands" ]; then
+            print_step "Copying builtin commands..."
+            cp "$REPO_ROOT_INSTALL/examples/dot.nano-cli/commands"/*.md "$INSTALL_DIR/commands/" 2>/dev/null || true
+            print_success "Installed builtin commands"
+        fi
+        
+        if [ -d "$REPO_ROOT_INSTALL/examples/dot.nano-cli/agents" ]; then
+            print_step "Copying builtin agents..."
+            cp "$REPO_ROOT_INSTALL/examples/dot.nano-cli/agents"/*.md "$INSTALL_DIR/agents/" 2>/dev/null || true
+            print_success "Installed builtin agents"
+        fi
+        
+        # Copy builtin hooks if they exist
+        if [ -d "$INSTALL_PATH/examples/hooks" ]; then
+            print_step "Copying builtin hooks..."
+            mkdir -p "$INSTALL_DIR/hooks"
+            cp "$INSTALL_PATH/examples/hooks"/* "$INSTALL_DIR/hooks/" 2>/dev/null || true
+            print_success "Installed builtin hooks"
+        fi
     fi
-    
-    # Change to installation directory
-    cd "$INSTALL_PATH"
-    
-    # Install dependencies
-    print_step "Installing dependencies..."
-    if [ -f ".env.sample" ] && [ ! -f ".env" ]; then
-        cp .env.sample .env
-        print_success "Created .env file from template"
-    elif [ -f ".env" ]; then
-        print_success "Existing .env file preserved (not overwritten)"
-    fi
-    
-    uv sync
-    print_success "Dependencies installed"
-    
-    # Install as a tool
-    print_step "Installing nano-agent command..."
-    uv tool install --force .
-    print_success "nano-agent command installed"
 }
 
 setup_configuration() {
@@ -353,12 +463,21 @@ EOF
     print_success "Configuration created at $CONFIG_DIR/config.yaml"
     
     # Setup example hooks if user wants them
-    if [ -f "$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/examples/setup_hooks.sh" ]; then
+    HOOKS_SETUP=""
+    if [ -n "$INSTALL_FROM_LOCAL" ] && [ -f "$SOURCE_DIR/examples/setup_hooks.sh" ]; then
+        HOOKS_SETUP="$SOURCE_DIR/examples/setup_hooks.sh"
+        HOOKS_DIR="$SOURCE_DIR"
+    elif [ -f "$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/examples/setup_hooks.sh" ]; then
+        HOOKS_SETUP="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/examples/setup_hooks.sh"
+        HOOKS_DIR="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server"
+    fi
+    
+    if [ -n "$HOOKS_SETUP" ]; then
         echo
         read -p "$(echo -e "${YELLOW}Would you like to install example hooks? (y/N): ${NC}")" -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            cd "$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server"
+            cd "$HOOKS_DIR"
             ./examples/setup_hooks.sh
             print_success "Example hooks installed"
         fi
@@ -459,8 +578,12 @@ setup_api_keys() {
     echo "3. ${BOLD}Ollama${NC} (Local models) - Install from: https://ollama.ai"
     echo
     
-    # Check for existing API keys
-    ENV_FILE="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/.env"
+    # Determine .env file location based on install type
+    if [ -n "$INSTALL_FROM_LOCAL" ]; then
+        ENV_FILE="$SOURCE_DIR/.env"
+    else
+        ENV_FILE="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/.env"
+    fi
     
     if [ -f "$ENV_FILE" ]; then
         echo "Current API key status:"
@@ -496,7 +619,12 @@ setup_api_keys() {
 }
 
 configure_api_keys() {
-    ENV_FILE="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/.env"
+    # Determine .env file location based on install type
+    if [ -n "$INSTALL_FROM_LOCAL" ]; then
+        ENV_FILE="$SOURCE_DIR/.env"
+    else
+        ENV_FILE="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/.env"
+    fi
     
     echo
     echo "Enter your API keys (press Enter to skip):"
@@ -623,16 +751,33 @@ test_installation() {
 
 show_completion_message() {
     clear
+    
+    # Determine .env file location based on install type
+    if [ -n "$INSTALL_FROM_LOCAL" ]; then
+        ENV_LOCATION="$SOURCE_DIR/.env"
+        DOCS_BASE="your source directory"
+    else
+        ENV_LOCATION="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/.env"
+        DOCS_BASE="$INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server"
+    fi
+    
     echo -e "
 ${BOLD}${GREEN}🎉 Installation Complete!${NC}
 
 ${BOLD}Nano Agent MCP Server has been successfully installed!${NC}
 
 ${BOLD}📍 Installation Locations:${NC}
-• Program files: $INSTALL_DIR/nano-agent
+• Builtin files: $INSTALL_DIR/ (commands, agents, skills, hooks)
 • Configuration: $CONFIG_DIR
-• Command: $(command -v nano-agent 2>/dev/null || echo "$(uv tool dir)/bin/nano-agent")
+• Command: $(command -v nano-agent 2>/dev/null || echo "$(uv tool dir)/bin/nano-agent")"
 
+    if [ -n "$INSTALL_FROM_LOCAL" ]; then
+        echo "• Source code: $SOURCE_DIR"
+    else
+        echo "• Program files: $INSTALL_DIR/nano-agent"
+    fi
+    
+    echo -e "
 ${BOLD}🚀 What's Next:${NC}
 
 ${BOLD}1. For Claude Desktop users:${NC}
@@ -647,14 +792,18 @@ ${BOLD}2. For CLI users:${NC}
      nano-cli run \"Analyze the files in this directory\" --read-only
 
 ${BOLD}3. Configure API Keys (if not done):${NC}
-   • Edit: $INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/.env
-   • Add your OpenAI, Anthropic, or setup Ollama
+   • Edit: $ENV_LOCATION
+   • Add your OpenAI, Anthropic, or setup Ollama"
 
+    if [ -z "$INSTALL_FROM_LOCAL" ]; then
+        echo -e "
 ${BOLD}📚 Documentation:${NC}
-   • Usage Guide: $INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/MCP_USAGE_GUIDE.md
-   • Hooks System: $INSTALL_DIR/nano-agent/apps/nano_agent_mcp_server/HOOKS.md
-   • README: $INSTALL_DIR/nano-agent/README.md
-
+   • Usage Guide: $DOCS_BASE/MCP_USAGE_GUIDE.md
+   • Hooks System: $DOCS_BASE/HOOKS.md
+   • README: $INSTALL_DIR/nano-agent/README.md"
+    fi
+    
+    echo -e "
 ${BOLD}🆘 Need Help?${NC}
    • Run: nano-agent --help
    • Check: nano-cli run \"test connection\"

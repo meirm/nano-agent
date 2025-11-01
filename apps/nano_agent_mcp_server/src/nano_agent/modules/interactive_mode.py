@@ -22,7 +22,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from .agent_loader import AgentLoader
-from .command_loader import CommandLoader, parse_command_syntax
+from .cascade_command_loader import CommandLoader, parse_command_syntax
 from .constants import AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_PROVIDER
 from .data_types import ChatMessage, PromptNanoAgentRequest
 try:
@@ -52,6 +52,7 @@ class NanoAgentCompleter(Completer):
         self.embedded_commands = [
             "/help",
             "/commands",
+            "/skills",
             "/clear",
             "/history",
             "/exit",
@@ -89,6 +90,7 @@ class NanoAgentCompleter(Completer):
                     descriptions = {
                         "/help": "Show help and usage information",
                         "/commands": "List all available commands",
+                        "/skills": "List all available Agent Skills",
                         "/clear": "Clear the screen",
                         "/history": "Show command history",
                         "/exit": "Exit interactive mode",
@@ -173,8 +175,13 @@ class InteractiveSession:
         self.read_only = read_only
         self.verbose = False
         from .config_manager import get_config_manager
+        from .user_tools import get_allowed_tools
         config = get_config_manager().config
-        self.loader = CommandLoader(enable_command_eval=config.enable_command_eval)
+        allowed_tools = get_allowed_tools()
+        self.loader = CommandLoader(
+            enable_command_eval=config.enable_command_eval,
+            allowed_tools=allowed_tools,
+        )
         self.agent_loader = AgentLoader()
         self.completer = NanoAgentCompleter()
         self.history_file = Path.home() / ".nano-cli" / "history.txt"
@@ -482,6 +489,10 @@ class InteractiveSession:
             self.agent_loader.display_agents_table()
             return True
 
+        elif cmd in ["skills", "/skills"]:
+            self._display_skills_table()
+            return True
+
         elif cmd.startswith("/commands show ") or cmd.startswith("commands show "):
             # Extract the command name to show
             parts = cmd.split()
@@ -525,6 +536,17 @@ class InteractiveSession:
             else:
                 console.print("[yellow]Usage: /agents show <agent_name>[/yellow]")
                 console.print("[dim]Example: /agents show coder[/dim]")
+            return True
+
+        elif cmd.startswith("/skills show ") or cmd.startswith("skills show "):
+            # Extract the skill name to show
+            parts = cmd.split()
+            if len(parts) >= 3:
+                skill_to_show = parts[2]
+                self._show_skill_details(skill_to_show)
+            else:
+                console.print("[yellow]Usage: /skills show <skill_name>[/yellow]")
+                console.print("[dim]Example: /skills show readme-generator[/dim]")
             return True
 
         elif cmd in ["clear", "/clear"]:
@@ -719,6 +741,8 @@ class InteractiveSession:
             "  /help <cmd>     - Show help for specific command\n"
             "  /commands       - List all available commands\n"
             "  /commands show <cmd> - Display full command file content\n"
+            "  /skills         - List all available Agent Skills\n"
+            "  /skills show <name> - Display skill details\n"
             "  /clear          - Clear the screen\n"
             "  /history        - Show command history\n"
             "  /reset, /new    - Clear chat history (start fresh)\n"
@@ -776,6 +800,137 @@ class InteractiveSession:
         except Exception as e:
             console.print(f"[red]Error reading history: {e}[/red]")
 
+    def _display_skills_table(self):
+        """Display a table of all available Agent Skills."""
+        from .skill_loader import SkillLoader
+        from .user_tools import get_allowed_tools
+        from rich.table import Table
+
+        try:
+            # Get allowed_tools from configuration
+            allowed_tools = get_allowed_tools()
+            skill_loader = SkillLoader(allowed_tools=allowed_tools)
+            skills = skill_loader.list_skills()
+
+            if not skills:
+                console.print(
+                    Panel(
+                        "[yellow]No skills found.[/yellow]\n\n"
+                        "Create your first skill with:\n"
+                        "  nano-cli skills create <name>\n\n"
+                        "Skills directories:\n"
+                        f"  Global: {skill_loader.global_skills_dir}\n"
+                        f"  Project: {skill_loader.project_skills_dir}",
+                        title="📚 Agent Skills",
+                        border_style="yellow",
+                    )
+                )
+                return
+
+            table = Table(title="Available Skills", show_header=True, header_style="bold cyan")
+            table.add_column("Name", style="green", no_wrap=True)
+            table.add_column("Description", style="white")
+            table.add_column("Status", style="cyan", no_wrap=True)
+            table.add_column("Source", style="blue", no_wrap=True)
+            table.add_column("Resources", style="magenta", no_wrap=True)
+
+            for skill in skills:
+                # Truncate long descriptions
+                desc = skill.description
+                if len(desc) > 60:
+                    desc = desc[:60] + "..."
+
+                # Status column
+                if skill.enabled:
+                    status = "[green]✓ Enabled[/green]"
+                else:
+                    reason = skill.disabled_reason or "Disabled"
+                    status = (
+                        f"[red]✗ Disabled[/red]\n[dim]{reason[:40]}...[/dim]"
+                        if len(reason) > 40
+                        else f"[red]✗ {reason}[/red]"
+                    )
+
+                table.add_row(
+                    skill.name,
+                    desc,
+                    status,
+                    skill.source,
+                    str(len(skill.resources)),
+                )
+
+            console.print(table)
+
+            # Show summary
+            global_count = sum(1 for s in skills if s.source == "global")
+            project_count = sum(1 for s in skills if s.source == "project")
+            enabled_count = sum(1 for s in skills if s.enabled)
+            disabled_count = len(skills) - enabled_count
+
+            console.print(
+                f"\n[dim]Total: {len(skills)} skills "
+                f"({enabled_count} enabled, {disabled_count} disabled, "
+                f"{global_count} global, {project_count} project)[/dim]"
+            )
+            console.print(f"[dim]Global directory: {skill_loader.global_skills_dir}[/dim]")
+            console.print(f"[dim]Project directory: {skill_loader.project_skills_dir}[/dim]")
+
+        except Exception as e:
+            console.print(f"[red]Error loading skills: {e}[/red]")
+            import traceback
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
+    def _show_skill_details(self, skill_name: str):
+        """Show detailed information about a specific skill."""
+        from .skill_loader import SkillLoader
+        from .user_tools import get_allowed_tools
+
+        try:
+            # Get allowed_tools from configuration
+            allowed_tools = get_allowed_tools()
+            skill_loader = SkillLoader(allowed_tools=allowed_tools)
+
+            # Load the skill
+            skill = skill_loader.get_skill(skill_name)
+            if not skill:
+                console.print(f"[red]Skill '{skill_name}' not found.[/red]")
+                console.print("[dim]Type '/skills' to see available skills.[/dim]")
+                return
+
+            # Read the full SKILL.md content
+            skill_path = skill.path / "SKILL.md"
+            if not skill_path.exists():
+                console.print(f"[red]Skill file not found: {skill_path}[/red]")
+                return
+
+            content = skill_path.read_text()
+
+            # Display in a panel
+            console.print(
+                Panel(
+                    content,
+                    title=f"📚 Skill: {skill.name}",
+                    subtitle=f"[dim]{skill.path} | "
+                    f"{'Enabled' if skill.enabled else 'Disabled: ' + (skill.disabled_reason or 'N/A')}[/dim]",
+                    border_style="green" if skill.enabled else "red",
+                    expand=False,
+                )
+            )
+
+            # Show additional info if skill is disabled
+            if not skill.enabled and skill.disabled_reason:
+                console.print(
+                    Panel(
+                        f"[red]Disabled Reason:[/red] {skill.disabled_reason}",
+                        border_style="red",
+                    )
+                )
+
+        except Exception as e:
+            console.print(f"[red]Error loading skill: {e}[/red]")
+            import traceback
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
     def _process_prompt(self, user_input: str) -> Optional[str]:
         """
         Process user input and return the final prompt.
@@ -822,6 +977,8 @@ class InteractiveSession:
             if f"/{command_name}" in [
                 "/help",
                 "/commands",
+                "/skills",
+                "/agents",
                 "/clear",
                 "/history",
                 "/exit",

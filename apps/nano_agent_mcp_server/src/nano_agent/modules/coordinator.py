@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .agent_loader import Agent, AgentLoader
-from .command_loader import CommandLoader
+from .cascade_command_loader import CommandLoader
 from .constants import DEFAULT_MODEL, DEFAULT_PROVIDER
 from .data_types import ChatMessage, PromptNanoAgentRequest
 from .nano_agent import _execute_nano_agent

@@ -28,7 +28,7 @@ except ImportError:
     # Fallback if config_integration is not available
     pass
 
-from .modules.command_loader import CommandLoader, parse_command_syntax
+from .modules.cascade_command_loader import CommandLoader, parse_command_syntax
 from .modules.constants import (DEFAULT_MODEL, DEFAULT_PROVIDER,
                                 DEFAULT_TEMPERATURE, DEMO_PROMPTS, MAX_TOKENS)
 from .modules.data_types import PromptNanoAgentRequest
@@ -42,7 +42,7 @@ from .modules.user_tools import list_user_tools, run_user_tool
 try:
     from . import __version__
 except ImportError:
-    __version__ = "0.5.1"  # Fallback version
+    __version__ = "0.5.3"  # Fallback version
 
 app = typer.Typer()
 console = Console()
