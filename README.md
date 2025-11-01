@@ -18,6 +18,7 @@ Nano Agent is a evolving MCP (Model Context Protocol) server that provides auton
 - **🔗 Hook System**: Customizable pre/post execution hooks for workflow automation
 - **📦 5-Minute Setup**: Install scripts for all platforms with auto-configuration
 - **🎯 Commands & Agents**: Extensible markdown-based commands and agent profiles
+- **🧠 Agent Skills**: Modular, auto-triggered capabilities that extend agent expertise
 - **💰 Cost Tracking**: Token usage and cost estimation across all providers
 - **📚 Comprehensive Docs**: Extensive guides for MCP, CLI, setup, and migration
 
@@ -40,6 +41,9 @@ iwr https://raw.githubusercontent.com/meirm/nano-agent/main/apps/nano_agent_mcp_
 Use nano-agent to analyze this project's architecture
 Use nano-agent to create a Python web scraper with error handling
 Use nano-agent in read-only mode to audit security vulnerabilities
+Generate a README file for this project
+Check code formatting across the codebase
+Write release notes for the latest changes
 ```
 
 **Via CLI**:
@@ -66,6 +70,11 @@ nano-cli -p "Add error handling to that function" --continue
 # Use custom commands and agents
 nano-cli -p '/analyze "Review this code for security issues"'
 nano-cli -p "Explain this code" --agent analyst
+
+# Skills automatically trigger based on your prompt
+nano-cli -p "Generate a README for this project"
+nano-cli -p "Check code formatting and style"
+nano-cli -p "Write release notes for version 1.0"
 
 # Alternative: use 'run' command (equivalent to -p flag)
 nano-cli run "Create a hello world script"
@@ -263,6 +272,104 @@ nano-cli commands list
 nano-cli agents list
 ```
 
+### 🧠 Agent Skills System
+
+**Modular, auto-triggered capabilities** - Skills are reusable expertise packages that automatically activate when relevant to the user's prompt.
+
+**What are Skills?**
+
+Skills are directories with `SKILL.md` files that:
+- **Auto-trigger**: Automatically matched based on user prompts and keywords
+- **Package expertise**: Bundle instructions, metadata, templates, and resources
+- **Progressive disclosure**: Load content in stages (metadata → instructions → resources) to optimize context usage
+- **Permission-aware**: Respect `allowed_tools` configuration for security
+
+**Built-in Skills**
+
+Nano Agent comes with several built-in skills:
+
+```bash
+# List all available skills
+nano-cli skills list
+
+# Show details about a specific skill
+nano-cli skills show readme-generator
+
+# Skills automatically trigger when you ask relevant questions:
+nano-cli -p "Generate a README for this project"
+# → Automatically uses readme-generator skill
+
+nano-cli -p "Check code formatting across all Python files"
+# → Automatically uses code-formatting-checker skill
+
+nano-cli -p "Write release notes for version 1.0"
+# → Automatically uses write-release-notes skill
+
+nano-cli -p "Perform a security audit on this skill"
+# → Automatically uses security-audit skill
+```
+
+**Skill Structure**
+
+Skills are stored in `~/.nano-cli/skills/` or `.nano-cli/skills/` (project-local):
+
+```
+skill-name/
+├── SKILL.md          # Main skill file (required) with YAML frontmatter
+├── examples/         # Optional: Example files
+├── templates/        # Optional: Template files
+└── scripts/          # Optional: Helper scripts
+```
+
+**Creating Custom Skills**
+
+```markdown
+---
+name: my-skill
+description: Use when the user asks to [trigger keywords]. 
+            Include keywords that should match this skill.
+tools: ["read_file", "write_file"]
+---
+
+# My Skill
+
+## Instructions
+
+Detailed step-by-step instructions for the agent...
+
+### Step 1: Analyze
+
+[Instructions]
+
+### Step 2: Generate
+
+[Instructions]
+```
+
+**Progressive Disclosure**
+
+Skills load content in stages:
+1. **Metadata** (always loaded): YAML frontmatter - ~100 tokens
+2. **Instructions** (when triggered): Full `SKILL.md` - ~5k tokens  
+3. **Resources** (as needed): Additional files - loaded on-demand
+
+This allows many skills without context penalty.
+
+**Permission System**
+
+Skills respect `allowed_tools` configuration:
+
+```bash
+# Enable skills system (required)
+nano-cli -p "Task" --allowed-tools skill read_file
+
+# Skills without tools: line are always loaded (when skills enabled)
+# Skills with tools: line only load if all required tools are allowed
+nano-cli skills list  # Shows enabled/disabled status with reasons
+```
+
+📖 **[Complete Skills Documentation](examples/skills/README.md)** - Examples, structure, and best practices
+
 **Output Formats**
 ```bash
 nano-cli -p "Task" -f rich     # Beautiful terminal output (default)
@@ -435,6 +542,12 @@ result = await prompt_nano_agent(
     blocked_paths=["./src/payments/stripe_keys.py"],
     allowed_paths=["./src/payments"]
 )
+
+# Enable Skills system and specific tools
+result = await prompt_nano_agent(
+    "Generate documentation",
+    allowed_tools=["skill", "read_file", "write_file"]  # Enable skills + file ops
+)
 ```
 
 ### Cost Tracking
@@ -562,6 +675,8 @@ nano-cli list-models --provider <name>  # List models for provider
 nano-cli sessions list          # List sessions
 nano-cli sessions show <id>     # Show session details
 nano-cli commands list          # List command templates
+nano-cli skills list            # List available skills
+nano-cli skills show <name>     # Show skill details
 nano-cli test-tools            # Test without API
 ```
 
@@ -625,6 +740,9 @@ uv sync --extra test
 - **[HOP-LOP Pattern](HOP-LOP-GUIDE.md)** - Task delegation architecture
 - **[Agent-OS Framework](.agent-os/)** - Product specs and standards
 - **[Examples](examples/)** - Sample configurations and use cases
+  - **[Agents](examples/agents/)** - Example agent configurations
+  - **[Commands](examples/commands/)** - Example command templates
+  - **[Skills](examples/skills/)** - Example skills with documentation
 
 ## Testing Infrastructure 🧪
 
